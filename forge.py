@@ -21,6 +21,7 @@ import re
 import shutil
 import subprocess
 import sys
+import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -634,12 +635,13 @@ class @@CLASS@@(
         var sort = DEFAULT_SORT
         var status = ""
         var ageRating = ""
-
+@@GENRE_VARS@@
         filters.forEach { filter ->
             when (filter) {
                 is SortFilter -> sort = filter.selected
                 is StatusFilter -> status = filter.selected
                 is AgeRatingFilter -> ageRating = filter.selected
+@@GENRE_BRANCH@@
                 else -> {}
             }
         }
@@ -647,6 +649,7 @@ class @@CLASS@@(
         val url = catalogUrl(page, sort, query).newBuilder()
         if (status.isNotEmpty()) url.addQueryParameter("status", status)
         if (ageRating.isNotEmpty()) url.addQueryParameter("age_rating", ageRating)
+@@GENRE_PARAMS@@
         return GET(url.build(), headers)
     }
 
@@ -753,6 +756,7 @@ class @@CLASS@@(
         SortFilter(),
         StatusFilter(),
         AgeRatingFilter(),
+@@GENRE_ENTRY@@
     )
 
     companion object {
@@ -816,6 +820,98 @@ def _render_filters(api: dict) -> str:
     return "\n".join(blocks)
 
 
+def fetch_genres(site: SiteSpec) -> list[dict]:
+    """Жанры с UUID: MangaDex-теги, закэшированные в sites/<id>.genres.json."""
+    cfg = site.api.get("genres") or {}
+    if not cfg:
+        return []
+    cache = SITES_DIR / f"{site.site_id}.genres.json"
+    if cache.exists():
+        return json.loads(cache.read_text(encoding="utf-8"))
+
+    if cfg.get("source", "mangadex") != "mangadex":
+        return cfg.get("list") or []
+
+    url = "https://api.mangadex.org/manga/tag?limit=100"
+    request = urllib.request.Request(url, headers={"User-Agent": "extension-forge/1.0"})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        data = json.load(response)
+
+    groups = set(cfg.get("groups") or ["genre"])
+    only = set(cfg.get("only") or [])
+    exclude = set(cfg.get("exclude") or [])
+    items = []
+    for tag in data.get("data", []):
+        attributes = tag.get("attributes") or {}
+        name = (attributes.get("name") or {}).get("en")
+        if not name or attributes.get("group") not in groups:
+            continue
+        if only and name not in only:
+            continue
+        if name in exclude:
+            continue
+        items.append({"id": tag["id"], "name": name})
+
+    items.sort(key=lambda item: item["name"].lower())
+    cache.write_text(json.dumps(items, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return items
+
+
+def _render_genre_filter(genres: list[dict]) -> str:
+    if not genres:
+        return ""
+    lines = [
+        "    private class GenreFilter :",
+        "        Filter.Group<Genre>(",
+        '            "Жанры",',
+        "            listOf(",
+    ]
+    lines.extend(
+        f'                Genre("{g["name"].replace(chr(34), chr(92) + chr(34))}", "{g["id"]}"),'
+        for g in genres
+    )
+    lines.extend(
+        [
+            "            ),",
+            "        )",
+            "",
+            "    private class Genre(name: String, val id: String) : Filter.TriState(name)",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _genre_placeholders(genres: list[dict]) -> dict:
+    if not genres:
+        return {
+            "@@GENRE_VARS@@": "",
+            "@@GENRE_BRANCH@@": "",
+            "@@GENRE_PARAMS@@": "",
+            "@@GENRE_ENTRY@@": "",
+        }
+    vars_ = '        var includedTags = ""\n        var excludedTags = ""'
+    branch = (
+        "                is GenreFilter -> {\n"
+        "                    includedTags = filter.state\n"
+        "                        .filter { it.state == Filter.TriState.STATE_INCLUDE }\n"
+        '                        .joinToString(",") { it.id }\n'
+        "                    excludedTags = filter.state\n"
+        "                        .filter { it.state == Filter.TriState.STATE_EXCLUDE }\n"
+        '                        .joinToString(",") { it.id }\n'
+        "                }"
+    )
+    params = (
+        '        if (includedTags.isNotEmpty()) url.addQueryParameter("included_tags", includedTags)\n'
+        '        if (excludedTags.isNotEmpty()) url.addQueryParameter("excluded_tags", excludedTags)'
+    )
+    return {
+        "@@GENRE_VARS@@": vars_,
+        "@@GENRE_BRANCH@@": branch,
+        "@@GENRE_PARAMS@@": params,
+        "@@GENRE_ENTRY@@": "        GenreFilter(),",
+    }
+
+
 def render_mihon_api(site: SiteSpec) -> None:
     """Полноценный клиент JSON API: каталог, поиск, детали, главы, страницы, качество."""
     repo = REPOS["mihon"]
@@ -871,10 +967,11 @@ keiyoushi {{
     (pkg_dir / "Dto.kt").write_text(dto_kt, encoding="utf-8")
 
     source_kt = _KT_SOURCE
+    genres = fetch_genres(site)
     source_replacements = dict(replacements)
     source_replacements.update(
         {
-            "@@FILTERS@@": _render_filters(api),
+            "@@FILTERS@@": _render_filters(api) + _render_genre_filter(genres),
             "@@API_KEY_HEADER@@": api.get("key_header", "X-API-Key"),
             "@@API_KEY@@": api.get("api_key", ""),
             "@@DEFAULT_QUALITY@@": default_quality,
@@ -889,6 +986,7 @@ keiyoushi {{
             "@@QUALITY_LABELS@@": _kotlin_array([q["label"] for q in qualities]),
         }
     )
+    source_replacements.update(_genre_placeholders(genres))
     for key, value in source_replacements.items():
         source_kt = source_kt.replace(key, value)
     (pkg_dir / f"{cls}.kt").write_text(source_kt, encoding="utf-8")

@@ -11,7 +11,7 @@ api_style: json_api
 nsfw: false
 version: 1.0.0
 source_id: 8
-ext_version_code: 2
+ext_version_code: 3
 
 # Качества изображений и выбор по умолчанию (настройки расширения в Mihon)
 qualities:
@@ -43,6 +43,10 @@ api:
     - { id: "completed", label: "Завершено" }
     - { id: "hiatus", label: "Перерыв" }
     - { id: "dropped", label: "Брошено" }
+  genres:
+    source: mangadex
+    groups: [genre, theme, format]
+    exclude: ["Gore", "Sexual Violence"]
   age_ratings:
     - { id: "", label: "Любой" }
     - { id: "16", label: "16+" }
