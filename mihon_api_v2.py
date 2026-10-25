@@ -45,9 +45,7 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * {name} ({host}) — сгенерировано extension-forge.
- *
- * {notes}
- */
+{notes} */
 @Source
 class {cls}(
     override val name: String,
