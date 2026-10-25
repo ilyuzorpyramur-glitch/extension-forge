@@ -245,7 +245,16 @@ def profile(url: str, key_header: str = "", key: str = "") -> dict:
             break
 
     if not result["list_path"]:
-        result["gaps"].append("список тайтлов (попробуйте указать api.base и api.list.path вручную)")
+        try:
+            import smartparse
+            learned = smartparse.learn_list(html, url)
+        except Exception:
+            learned = {}
+        if learned:
+            result["html"] = learned
+            result["gaps"].append("html-режим: детали/главы/страницы")
+        else:
+            result["gaps"].append("список тайтлов (попробуйте указать api.base и api.list.path вручную)")
         return result
 
     sample_id = _sample_id(result, headers)

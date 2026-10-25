@@ -10,13 +10,14 @@ lang: ru
 api_style: json_api_v2
 nsfw: false
 version: 1.0.0
-ext_version_code: 2
+ext_version_code: 4
 source_id: 7420534233267322527
 content_warning: MIXED
 
 api:
   base: https://tomilo-lib.ru/api
-  media_base: https://tomilolib.s3.regru.cloud
+  media_base: https://cdn.tomilo-lib.ru
+  media_strip: "/uploads"
   rate: 4
   list:
     path: /titles
@@ -114,6 +115,7 @@ api:
     - - pause
       - Приостановлен
   genres:
+    transform: lower
     list:
     - id: Азартные игры
       name: Азартные игры

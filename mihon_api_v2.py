@@ -119,11 +119,13 @@ class {cls}(
         else -> ""
     }}
 
-    private fun String.absoluteUrl(): String = when {{
-        isEmpty() -> ""
-        startsWith("http") -> this
-        startsWith("/") -> MEDIA_BASE + this
-        else -> MEDIA_BASE + "/" + this
+    private fun String.absoluteUrl(): String {{
+        if (isEmpty()) return ""
+        var url = if (startsWith("http")) this else MEDIA_BASE + (if (startsWith("/")) this else "/" + this)
+        if (MEDIA_STRIP.isNotEmpty() && url.startsWith(MEDIA_BASE + MEDIA_STRIP)) {{
+            url = MEDIA_BASE + url.removePrefix(MEDIA_BASE + MEDIA_STRIP)
+        }}
+        return url
     }}
 '''
 
@@ -157,6 +159,12 @@ def render(site, pkg: str, cls: str, host: str, version_code: int, source_id: in
         head = head.replace("import androidx.preference.SwitchPreferenceCompat\n", "")
     if not ((api.get("chapters") or {}).get("steps") or []):
         head = head.replace("import rx.Observable\n", "")
+    if not (site.qualities or (api.get("options") or {})):
+        head = head.replace(") : HttpSource(),\n    ConfigurableSource {", ") : HttpSource() {")
+        head = head.replace("import eu.kanade.tachiyomi.source.ConfigurableSource\n", "")
+        head = head.replace("import androidx.preference.PreferenceScreen\n", "")
+        head = head.replace("import keiyoushi.utils.getPreferencesLazy\n", "")
+        head = head.replace("    private val preferences by getPreferencesLazy()\n\n", "")
     lines.append(head)
 
     lines.append(_prefs(site, api))
@@ -181,9 +189,7 @@ def _prefs(site, api) -> str:
     options = api.get("options") or {}
     qualities = site.qualities or []
     if not options and not qualities:
-        return """    override fun setupPreferenceScreen(screen: PreferenceScreen) = Unit
-
-"""
+        return ""
 
     prefs = ["    // ============================== Настройки ==============================\n"]
     entries = []
@@ -340,9 +346,16 @@ def _list_section(api) -> str:
 '''
     out.append(sorts_line)
     if genres_config(api):
+        transform = (genres_config(api).get("transform") or "").lower()
+        if transform == "lower":
+            genre_expr = "it.id.lowercase()"
+        elif transform == "trim":
+            genre_expr = "it.id.trim()"
+        else:
+            genre_expr = "it.id"
         out.append(
-            '''                is GenreFilter -> filter.state.filter { it.state }
-                    .forEach { builder.addQueryParameter(GENRE_PARAM, it.id) }
+            f'''                is GenreFilter -> filter.state.filter {{ it.state }}
+                    .forEach {{ builder.addQueryParameter(GENRE_PARAM, {genre_expr}) }}
 '''
         )
     out.append(
@@ -446,12 +459,21 @@ def _chapters_section(api) -> str:
     for idx, step in enumerate(steps[:-1], start=1):
         select = step.get("select") or {}
         pre = f"step{idx}"
-        body.append(f"        val {pre} = getJson(API_BASE + STEP{idx}_PATH.replace(\"{{id}}\", manga.url))\n")
-        body.append(f"        val {pre}Items = {pre}.items({_kotlin_str(step.get('items', 'data'))})\n")
-        if select.get("main_field") or select.get("max_field"):
+        path_expr = f"API_BASE + STEP{idx}_PATH"
+        for var, kotlin_name in vars_.items():
+            path_expr += f'.replace("{{{var}}}", {kotlin_name})'
+        path_expr += '.replace("{id}", manga.url)'
+        body.append(f"        val {pre} = getJson({path_expr})\n")
+        if step.get("items"):
+            body.append(f"        val {pre}Items = {pre}.items({_kotlin_str(step['items'])})\n")
+        if select:
             main = select.get("main_field")
             mx = select.get("max_field", "count")
-            main_expr = f"{pre}Items.firstOrNull {{ it.flag({_kotlin_str(main)}) }}" if main else f"{pre}Items.firstOrNull()"
+            main_expr = (
+                f"{pre}Items.firstOrNull {{ it.flag({_kotlin_str(main)}) }}"
+                if main
+                else f"{pre}Items.firstOrNull()"
+            )
             pick = f"{main_expr} ?: {pre}Items.maxByOrNull {{ it.number({_kotlin_str(mx)}) }}"
             body.append(f"        val picked{idx} = {pick}\n")
             for var_name, field in (select.get("save") or {}).items():
@@ -462,6 +484,10 @@ def _chapters_section(api) -> str:
                 kotlin_name = camel(var_name)
                 body.append(f"        val {kotlin_name} = picked{idx}?.text({_kotlin_str(field)}) ?: \"\"\n")
                 vars_[var_name] = kotlin_name
+        for var_name, path in (step.get("save") or {}).items():
+            kotlin_name = camel(var_name)
+            body.append(f"        val {kotlin_name} = {pre}.text({_kotlin_str(path)})\n")
+            vars_[var_name] = kotlin_name
         body.append("\n")
 
     last = steps[-1]
@@ -595,6 +621,23 @@ def _mapping_section(api) -> str:
     if alt:
         title_expr = f"item.text({f('title')}).ifBlank {{ item.text({_kotlin_str(alt)}) }}"
 
+    genres_field = fields.get("genres", "genres")
+    genres_name = fields.get("genres_name")
+    if genres_name:
+        genre_expr = (
+            f'item.items({_kotlin_str(genres_field)}).joinToString(", ") '
+            f'{{ it.text({_kotlin_str(genres_name)}) }}'
+        )
+    else:
+        genre_expr = f'item.items({_kotlin_str(genres_field)}).joinToString(", ") {{ it.asText() }}'
+
+    description_expr = f"item.text({f('description')})"
+    description_alt = fields.get("description_alt")
+    if description_alt:
+        description_expr = (
+            f"item.text({f('description')}).ifBlank {{ item.text({_kotlin_str(description_alt)}) }}"
+        )
+
     return f'''    // ================================ Маппинг ================================
 
     private fun JsonElement.toSManga(): SManga = SManga.create().apply {{
@@ -604,8 +647,8 @@ def _mapping_section(api) -> str:
         thumbnail_url = item.text({f("cover")}).absoluteUrl()
         author = item.text({f("author")}).takeIf {{ it.isNotEmpty() }}
         artist = item.text({f("artist")}).takeIf {{ it.isNotEmpty() }}
-        description = item.text({f("description")})
-        genre = item.items({_kotlin_str(fields.get("genres", "genres"))}).joinToString(", ") {{ it.asText() }}
+        description = {description_expr}
+        genre = {genre_expr}
         status = item.text({f("status")}).toSMangaStatus()
         initialized = false
     }}
@@ -720,6 +763,7 @@ def _consts(site, api) -> str:
     consts = [
         f'        private const val API_BASE = "{api.get("base", "")}"',
         f'        private const val MEDIA_BASE = "{api.get("media_base", site.base_url)}"',
+        f'        private const val MEDIA_STRIP = "{api.get("media_strip", "")}"',
         f'        private const val LIST_PATH = "{list_cfg.get("path", "/")}"',
         f'        private const val SIZE = {list_cfg.get("size", 20)}',
         f'        private const val DEFAULT_SORT = "{list_cfg.get("default_sort", "")}"',

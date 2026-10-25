@@ -8,7 +8,7 @@ lang: ru
 api_style: json_api_v2
 nsfw: false
 version: 1.0.0
-ext_version_code: 2
+ext_version_code: 3
 
 api:
   base: https://api.astramanga.org/api/v1
@@ -36,15 +36,19 @@ api:
       id: slug
       title: name
       cover: cover_image
-      description: synopsis
+      description: description
+      description_alt: synopsis
       status: status
       genres: genres
+      genres_name: name
   details:
     path: /titles/{id}
     root: data
   chapters:
     steps:
-      - path: /titles/{id}/branches
+      - path: /titles/{id}
+        save: { title_id: data.id }
+      - path: /titles/{title_id}/branches
         items: data.branches
         select:
           main_field: is_main
