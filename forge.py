@@ -7,6 +7,7 @@
   - lnreader-ru-plugins   (ранобэ,  TypeScript, LNReader Plugin API)
 
 Команды:
+  forge add <url>              — разведка сайта и генерация по одной ссылке
   forge generate <site.yaml>   — сгенерировать расширение из декларации
   forge bump <target> <name>   — поднять версию расширения
   forge list                   — список известных сайтов
@@ -66,6 +67,11 @@ class SiteSpec:
     source_id: int = 0
     # versionCode модуля (если 0 — версия существующего модуля + 1)
     ext_version_code: int = 0
+    # переопределения имён (если имя сайта не годится для класса/пакета)
+    source_class: str = ""
+    source_package: str = ""
+    # ContentWarning: SAFE | MIXED | NSFW
+    content_warning: str = ""
 
     @classmethod
     def from_yaml(cls, path: Path) -> "SiteSpec":
@@ -88,6 +94,9 @@ class SiteSpec:
             api=data.get("api", {}),
             source_id=data.get("source_id", 0),
             ext_version_code=data.get("ext_version_code", 0),
+            source_class=data.get("class_name", ""),
+            source_package=data.get("package", ""),
+            content_warning=data.get("content_warning", ""),
         )
 
 
@@ -206,11 +215,59 @@ def generate_icons(site: SiteSpec) -> list[Path]:
 
 
 def render_mihon(site: SiteSpec) -> None:
-    """Генерирует mihon-расширение: полноценный API-клиент или HTML-заготовку."""
-    if site.api:
+    """Генерирует mihon-расширение: API-клиент или HTML-заготовку."""
+    if site.api_style == "json_api_v2" and site.api:
+        render_mihon_api_v2(site)
+    elif site.api:
         render_mihon_api(site)
     else:
         _render_mihon_skeleton(site)
+
+
+def _write_gradle(module: Path, site: SiteSpec, version_code: int, source_id: int) -> None:
+    content_warning = site.content_warning or ("NSFW" if site.nsfw else "SAFE")
+    gradle = f"""import io.github.keiyoushi.gradle.api.ContentWarning
+
+plugins {{
+    alias(kei.plugins.extension)
+}}
+
+keiyoushi {{
+    name = "{site.name}"
+    versionCode = {version_code}
+    contentWarning = ContentWarning.{content_warning}
+    libVersion = "1.4"
+
+    source {{
+        baseUrl = "{site.base_url}"
+        lang = "{site.lang}"
+        id = {source_id}L
+    }}
+}}
+"""
+    (module / "build.gradle.kts").write_text(gradle, encoding="utf-8")
+
+
+def render_mihon_api_v2(site: SiteSpec) -> None:
+    """Универсальный API-генератор: всё поведение из блока api декларации."""
+    import mihon_api_v2
+
+    repo = REPOS["mihon"]
+    module = repo / "src" / site.lang / site.site_id
+    pkg_dir = module / "src" / "eu" / "kanade" / "tachiyomi" / "extension" / site.lang / site.site_id
+    pkg_dir.mkdir(parents=True, exist_ok=True)
+
+    cls = site.source_class or class_name(site)
+    pkg = site.source_package or package_name(site)
+    host = site.base_url.split("//", 1)[-1].split("/")[0]
+    source_id = _stable_source_id(site)
+    version_code = site.ext_version_code or _next_version_code(module)
+    genres = fetch_genres(site)
+
+    _write_gradle(module, site, version_code, source_id)
+    code = mihon_api_v2.render(site, pkg, cls, host, version_code, source_id, genres)
+    (pkg_dir / f"{cls}.kt").write_text(code, encoding="utf-8")
+    generate_icons(site)
 
 
 def _render_mihon_skeleton(site: SiteSpec) -> None:
@@ -829,7 +886,27 @@ def fetch_genres(site: SiteSpec) -> list[dict]:
     if cache.exists():
         return json.loads(cache.read_text(encoding="utf-8"))
 
-    if cfg.get("source", "mangadex") != "mangadex":
+    source = cfg.get("source", "mangadex")
+    if source == "api":
+        headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+        headers.update(cfg.get("headers") or {})
+        request = urllib.request.Request(
+            cfg["base"].rstrip("/") + cfg.get("path", "/genres"),
+            headers=headers,
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
+            data = json.load(response)
+        items = data
+        for segment in (cfg.get("items") or "").split("."):
+            if segment:
+                items = items[segment]
+        result = [
+            {"id": str(item[cfg.get("id", "id")]), "name": str(item.get(cfg.get("name", "name")) or "")}
+            for item in items
+        ]
+        cache.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return result
+    if source != "mangadex":
         return cfg.get("list") or []
 
     url = "https://api.mangadex.org/manga/tag?limit=100"
@@ -995,11 +1072,15 @@ keiyoushi {{
 
 
 def _stable_source_id(site: SiteSpec) -> int:
-    """Стабильный id источника (не зависит от PYTHONHASHSEED)."""
+    """id источника: явный из декларации или KSP-совместимый (MD5 name/lang/1)."""
     if site.source_id:
         return int(site.source_id)
-    digest = hashlib.md5(site.site_id.encode("utf-8")).hexdigest()
-    return int(digest[:6], 16) % 900 + 100
+    key = f"{site.name.lower()}/{site.lang}/1"
+    digest = hashlib.md5(key.encode("utf-8")).digest()
+    value = 0
+    for byte in digest[:8]:
+        value = (value << 8) | byte
+    return value & 0x7FFFFFFFFFFFFFFF
 
 
 def _next_version_code(module: Path) -> int:
@@ -1228,11 +1309,54 @@ def register_extension(site: SiteSpec, version_code: str = "1") -> None:
 # ---------------------------------------------------------------------------
 
 
+def cmd_add(args: list[str]) -> None:
+    """Разведка сайта по одной ссылке: forge add https://site.ru"""
+    if not args:
+        sys.exit("Использование: forge.py add https://site.ru [--force] [--dry-run]")
+    import recon
+
+    url = args[0]
+    flags = set(args[1:])
+    if not url.startswith("http"):
+        url = "https://" + url
+    result = recon.profile(url)
+    if result.get("error"):
+        sys.exit(f"✖ {result['error']}")
+
+    host = result["host"]
+    parts = host.split(".")
+    site_id = re.sub(r"[^a-z0-9]", "", parts[-2] if len(parts) >= 2 else parts[0])
+    spec_path = SITES_DIR / f"{site_id}.yaml"
+    yaml_text = recon.build_yaml(result, site_id)
+
+    print(f"→ Разведка {url}")
+    print(f"  сайт: {result['name']}, API: {result['base'] or '—'}")
+    print(f"  список: {result['list_path'] or '—'} (items: {result['items'] or '—'})")
+    print(f"  поля: {', '.join(result['fields']) or '—'}")
+    if result.get("pagination"):
+        print(f"  пагинация: {result['pagination']}")
+    if result.get("gaps"):
+        print("  не найдено: " + ", ".join(result["gaps"]))
+
+    if "--dry-run" in flags:
+        print(yaml_text)
+        return
+    if spec_path.exists() and "--force" not in flags:
+        print(f"  декларация уже есть: {spec_path} (--force, чтобы перезаписать)")
+        return
+    spec_path.write_text(yaml_text, encoding="utf-8")
+    print(f"✔ Декларация: {spec_path}")
+    cmd_generate([str(spec_path)])
+
+
 def cmd_generate(args: list[str]) -> None:
     if not args:
         sys.exit("Использование: forge.py generate <sites/example.yaml>")
     spec_path = Path(args[0])
     if not spec_path.exists():
+        if str(args[0]).startswith("http"):
+            cmd_add([str(args[0])])
+            return
         sys.exit(f"Декларация не найдена: {spec_path}")
     site = SiteSpec.from_yaml(spec_path)
     print(f"→ Генерация {site.kind}/{site.site_id} ({site.name})")
@@ -1284,6 +1408,7 @@ def cmd_watch(args: list[str]) -> None:
 
 
 COMMANDS = {
+    "add": cmd_add,
     "generate": cmd_generate,
     "bump": cmd_bump,
     "list": cmd_list,

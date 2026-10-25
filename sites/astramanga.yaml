@@ -1,0 +1,88 @@
+# AstraManga — astramanga.org
+# API: api.astramanga.org/api/v1 (без ключа)
+id: astramanga
+kind: mihon
+name: AstraManga
+base_url: https://astramanga.org
+lang: ru
+api_style: json_api_v2
+nsfw: false
+version: 1.0.0
+ext_version_code: 2
+
+api:
+  base: https://api.astramanga.org/api/v1
+  media_base: https://astramanga.org/media
+  rate: 2
+  list:
+    path: /search
+    items: data.titles
+    page_param: page
+    size_param: page_size
+    size: 30
+    query_param: query
+    sort_param: sort
+    sorts:
+      - { id: "popular", label: "По популярности", value: "-popularity" }
+      - { id: "updated", label: "По дате обновления", value: "-updated_at" }
+      - { id: "created", label: "По дате добавления", value: "-created_at" }
+      - { id: "rating", label: "По рейтингу", value: "-rating" }
+      - { id: "name", label: "По названию", value: "name" }
+    default_sort: "-popularity"
+    latest_sort: "-updated_at"
+    total_pages: data.total_pages
+    current_page: data.current_page
+    fields:
+      id: slug
+      title: name
+      cover: cover_image
+      description: synopsis
+      status: status
+      genres: genres
+  details:
+    path: /titles/{id}
+    root: data
+  chapters:
+    steps:
+      - path: /titles/{id}/branches
+        items: data.branches
+        select:
+          main_field: is_main
+          max_field: count_chapters
+          save: { branch_id: id }
+          save_number: { branch_count: count_chapters }
+      - path: /branches/{branch_id}/chapters
+        items: data.items
+        params: { page_size: "{branch_count}" }
+        fields:
+          chapter_id: id
+          chapter_number: number
+          chapter_title: name
+          chapter_date: ""
+  pages:
+    path: /chapters/{chapter}/pages
+    items: data.pages
+    image: image_url
+  filters:
+    - class: TypeFilter
+      name: "Тип"
+      param: type
+      values: [["", "Все"], ["manga", "Манга"], ["manhwa", "Манхва"], ["manhua", "Маньхуа"]]
+    - class: StatusFilter
+      name: "Статус"
+      param: status
+      values: [["", "Любой"], ["ongoing", "Онгоинг"], ["completed", "Завершён"], ["paused", "Приостановлен"]]
+  genres:
+    source: api
+    base: https://api.astramanga.org/api/v1
+    path: /genres
+    items: data
+    id: id
+    name: name
+    param: genres
+  status_map:
+    ongoing: ONGOING
+    completed: COMPLETED
+    paused: ON_HIATUS
+
+notes: "API без ключа. Главы по веткам перевода: главная ветка или самая большая. Жанры — /genres, фильтр по id."

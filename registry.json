@@ -39,6 +39,32 @@
       "default_quality": "data",
       "last_version": "1.4.3",
       "last_version_code": "104003"
+    },
+    {
+      "id": "astramanga",
+      "kind": "mihon",
+      "name": "AstraManga",
+      "base_url": "https://astramanga.org",
+      "version": "1.0.0",
+      "version_code": "1",
+      "nsfw": false,
+      "watch": true,
+      "selectors": {},
+      "qualities": [],
+      "default_quality": ""
+    },
+    {
+      "id": "tomilolib",
+      "kind": "mihon",
+      "name": "Tomilo-lib",
+      "base_url": "https://tomilo-lib.ru",
+      "version": "1.0.0",
+      "version_code": "1",
+      "nsfw": false,
+      "watch": true,
+      "selectors": {},
+      "qualities": [],
+      "default_quality": ""
     }
   ]
 }
