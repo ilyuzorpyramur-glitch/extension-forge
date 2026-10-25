@@ -7,12 +7,36 @@
       "target_repo": "mihon-ru-manga-repo",
       "module": "src/ru/mangalove",
       "declaration": "sites/mangalove.yaml",
-      "version": "1.4.1",
+      "version": "1.0.0",
       "versionCode": 1,
       "watch": true,
       "last_checked": null,
       "last_status": "generated",
-      "base_url": "https://mangalove.ru"
+      "base_url": "https://mangalove.ru",
+      "version_code": "1",
+      "nsfw": false,
+      "selectors": {
+        "popular": "GET /api/v1/manga/catalog?sort=rating → manga[].id",
+        "search": "GET /api/v1/manga/catalog?q= → manga[].title",
+        "details": {
+          "title": "title",
+          "cover": "cover_url",
+          "description": "description_ru"
+        },
+        "chapters": "GET /api/v1/manga/{id}/chapters → chapters[]",
+        "pages": "GET /api/v1/manga/{id}/chapters/{ch}/pages?quality=data → pages[]"
+      },
+      "qualities": [
+        {
+          "id": "data",
+          "label": "Полное качество"
+        },
+        {
+          "id": "data-saver",
+          "label": "Экономное (data-saver)"
+        }
+      ],
+      "default_quality": "data"
     }
   ]
 }

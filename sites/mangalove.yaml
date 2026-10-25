@@ -10,6 +10,8 @@ theme: ""            # собственный API-класс, без multisrc-т
 api_style: json_api
 nsfw: false
 version: 1.0.0
+source_id: 8
+ext_version_code: 2
 
 # Качества изображений и выбор по умолчанию (настройки расширения в Mihon)
 qualities:
@@ -19,15 +21,42 @@ qualities:
     label: "Экономное (data-saver)"
 default_quality: "data"
 
+# JSON API: генератор собирает по этому блоку рабочий клиент
+api:
+  key_header: "X-API-Key"
+  api_key: "a5e6bd2ad6b0b838a4d332757981f03a5639c937c4d92a9af9ddf7e330da94ad"
+  per_page: 50
+  catalog: "/api/v1/manga/catalog"
+  details: "/api/v1/manga/{id}"
+  chapters: "/api/v1/manga/{id}/chapters"
+  pages: "/api/v1/manga/{id}/chapters/{chapter}/pages"
+  default_sort: "popular"
+  latest_sort: "siteLatest"
+  sorts:
+    - { id: "popular", label: "По популярности" }
+    - { id: "rating", label: "По рейтингу" }
+    - { id: "latest", label: "Последние обновления" }
+    - { id: "siteLatest", label: "Новое на сайте" }
+  statuses:
+    - { id: "", label: "Любой" }
+    - { id: "ongoing", label: "Выходит" }
+    - { id: "completed", label: "Завершено" }
+    - { id: "hiatus", label: "Перерыв" }
+    - { id: "dropped", label: "Брошено" }
+  age_ratings:
+    - { id: "", label: "Любой" }
+    - { id: "16", label: "16+" }
+    - { id: "18", label: "18+" }
+
 # Селекторы (для сторожа: JSON-пути API и их проверки)
 selectors:
   popular: "GET /api/v1/manga/catalog?sort=rating → manga[].id"
   search: "GET /api/v1/manga/catalog?q= → manga[].title"
   details:
-    title: "manga.title"
-    cover: "manga.cover_url"
-    description: "manga.description"
+    title: "title"
+    cover: "cover_url"
+    description: "description_ru"
   chapters: "GET /api/v1/manga/{id}/chapters → chapters[]"
   pages: "GET /api/v1/manga/{id}/chapters/{ch}/pages?quality=data → pages[]"
 
-notes: "API-ключ X-API-Key: a5e6bd2a…4ad (из фронтенда). Сортировки: rating, popular, latest, siteLatest. Главы ≤100/запрос, каталог ≤50/запрос."
+notes: "API-ключ X-API-Key (из фронтенда). Сортировки: popular, rating, latest, siteLatest. Главы ≤100/страница, каталог ≤50/страницу. Поля-числа приходят то строкой, то числом."

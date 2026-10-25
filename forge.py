@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -58,6 +59,12 @@ class SiteSpec:
     nsfw: bool = False
     api_style: str = ""       # "html" | "json_api"
     notes: str = ""
+    # JSON API: эндпоинты, ключ, сортировки, статусы, возрастные рейтинги
+    api: dict = field(default_factory=dict)
+    # явный id источника для KSP (иначе считается стабильно из site_id)
+    source_id: int = 0
+    # versionCode модуля (если 0 — версия существующего модуля + 1)
+    ext_version_code: int = 0
 
     @classmethod
     def from_yaml(cls, path: Path) -> "SiteSpec":
@@ -77,6 +84,9 @@ class SiteSpec:
             nsfw=data.get("nsfw", False),
             api_style=data.get("api_style", "html"),
             notes=data.get("notes", ""),
+            api=data.get("api", {}),
+            source_id=data.get("source_id", 0),
+            ext_version_code=data.get("ext_version_code", 0),
         )
 
 
@@ -92,8 +102,9 @@ def package_name(site: SiteSpec) -> str:
 
 
 def class_name(site: SiteSpec) -> str:
-    """MyMangaSite из 'My Manga Site'."""
-    return re.sub(r"[^A-Za-z0-9]", "", site.name.title().replace(" ", ""))
+    """MyMangaSite из 'My Manga Site'; MangaLove остаётся MangaLove."""
+    parts = re.split(r"[^A-Za-z0-9]+", site.name)
+    return "".join(part[:1].upper() + part[1:] for part in parts if part)
 
 
 def monogram(name: str) -> str:
@@ -194,6 +205,14 @@ def generate_icons(site: SiteSpec) -> list[Path]:
 
 
 def render_mihon(site: SiteSpec) -> None:
+    """Генерирует mihon-расширение: полноценный API-клиент или HTML-заготовку."""
+    if site.api:
+        render_mihon_api(site)
+    else:
+        _render_mihon_skeleton(site)
+
+
+def _render_mihon_skeleton(site: SiteSpec) -> None:
     repo = REPOS["mihon"]
     module = repo / "src" / site.lang / site.site_id
     pkg_dir = module / "src" / "eu" / "kanade" / "tachiyomi" / "extension" / site.lang / site.site_id
@@ -288,7 +307,7 @@ abstract class {cls} :
 
     // ==== Страницы (качество выбирается в настройках) ====
     override fun pageListParse(response: Response): List<Page> {{
-        TODO("Реализуйте по селекторам pages из sites/{site.site_id}.yaml; качество: $defaultQuality")
+        TODO("Реализуйте по селекторам pages из sites/{site.site_id}.yaml")
     }}
 
     companion object {{
@@ -300,6 +319,598 @@ abstract class {cls} :
 
     # Иконки
     generate_icons(site)
+
+
+# ---------------------------------------------------------------------------
+# Генерация: mihon + JSON API (полностью рабочий клиент)
+# ---------------------------------------------------------------------------
+
+_KT_SERIALIZERS = '''package @@PKG@@
+
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+
+// Сайт отдаёт числа то строкой, то числом, а null — там, где поле объявлено
+// обязательным. Эти сериализаторы терпят всю эту неоднородность.
+// Сгенерировано extension-forge: правьте шаблон, а не этот файл.
+
+object FlexibleString : KSerializer<String> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("FlexibleString", PrimitiveKind.STRING)
+
+    override fun deserialize(decoder: Decoder): String {
+        val element = (decoder as? JsonDecoder)?.decodeJsonElement() ?: return decoder.decodeString()
+        return when (element) {
+            is JsonNull -> ""
+            is JsonPrimitive -> element.content
+            else -> element.toString()
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: String) = encoder.encodeString(value)
+}
+
+object FlexibleInt : KSerializer<Int> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("FlexibleInt", PrimitiveKind.INT)
+
+    override fun deserialize(decoder: Decoder): Int {
+        val element = (decoder as? JsonDecoder)?.decodeJsonElement() ?: return decoder.decodeInt()
+        if (element is JsonNull) return 0
+        return (element as? JsonPrimitive)?.content?.toDoubleOrNull()?.toInt() ?: 0
+    }
+
+    override fun serialize(encoder: Encoder, value: Int) = encoder.encodeInt(value)
+}
+
+object FlexibleDouble : KSerializer<Double> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("FlexibleDouble", PrimitiveKind.DOUBLE)
+
+    override fun deserialize(decoder: Decoder): Double {
+        val element = (decoder as? JsonDecoder)?.decodeJsonElement() ?: return decoder.decodeDouble()
+        if (element is JsonNull) return 0.0
+        return (element as? JsonPrimitive)?.content?.toDoubleOrNull() ?: 0.0
+    }
+
+    override fun serialize(encoder: Encoder, value: Double) = encoder.encodeDouble(value)
+}
+
+object FlexibleBool : KSerializer<Boolean> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("FlexibleBool", PrimitiveKind.BOOLEAN)
+
+    override fun deserialize(decoder: Decoder): Boolean {
+        val element = (decoder as? JsonDecoder)?.decodeJsonElement() ?: return decoder.decodeBoolean()
+        if (element is JsonNull) return false
+        val raw = (element as? JsonPrimitive)?.content ?: return false
+        return raw == "true" || raw == "1"
+    }
+
+    override fun serialize(encoder: Encoder, value: Boolean) = encoder.encodeBoolean(value)
+}
+
+object FlexibleStringList : KSerializer<List<String>> {
+    override val descriptor: SerialDescriptor = ListSerializer(FlexibleString).descriptor
+
+    override fun deserialize(decoder: Decoder): List<String> {
+        val element = (decoder as? JsonDecoder)?.decodeJsonElement() ?: return emptyList()
+        if (element !is JsonArray) return emptyList()
+        return element.mapNotNull { item ->
+            when (item) {
+                is JsonNull -> null
+                is JsonPrimitive -> item.content
+                else -> null
+            }
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: List<String>) {
+        ListSerializer(FlexibleString).serialize(encoder, value)
+    }
+}
+
+private class FlexibleList<T>(private val serializer: KSerializer<T>) : KSerializer<List<T>> {
+    override val descriptor: SerialDescriptor = ListSerializer(serializer).descriptor
+
+    override fun deserialize(decoder: Decoder): List<T> {
+        val jsonDecoder = decoder as? JsonDecoder
+            ?: return decoder.decodeSerializableValue(ListSerializer(serializer))
+        val element = jsonDecoder.decodeJsonElement()
+        if (element !is JsonArray) return emptyList()
+        return element.map { jsonDecoder.json.decodeFromJsonElement(serializer, it) }
+    }
+
+    override fun serialize(encoder: Encoder, value: List<T>) {
+        ListSerializer(serializer).serialize(encoder, value)
+    }
+}
+
+@Serializable
+data class MangaDto(
+    @Serializable(with = FlexibleString::class) val id: String = "",
+    @Serializable(with = FlexibleString::class) val title: String = "",
+    @SerialName("title_ru")
+    @Serializable(with = FlexibleString::class)
+    val titleRu: String = "",
+    @SerialName("description_ru")
+    @Serializable(with = FlexibleString::class)
+    val descriptionRu: String = "",
+    @Serializable(with = FlexibleString::class) val description: String = "",
+    @SerialName("cover_url")
+    @Serializable(with = FlexibleString::class)
+    val coverUrl: String = "",
+    @Serializable(with = FlexibleStringList::class) val genres: List<String> = emptyList(),
+    @Serializable(with = FlexibleStringList::class) val themes: List<String> = emptyList(),
+    @Serializable(with = FlexibleString::class) val author: String = "",
+    @Serializable(with = FlexibleString::class) val artist: String = "",
+    @Serializable(with = FlexibleString::class) val status: String = "",
+    @Serializable(with = FlexibleInt::class) val year: Int = 0,
+    @SerialName("chapters_count")
+    @Serializable(with = FlexibleInt::class)
+    val chaptersCount: Int = 0,
+    @SerialName("rating_avg")
+    @Serializable(with = FlexibleDouble::class)
+    val ratingAvg: Double = 0.0,
+)
+
+object MangaList : KSerializer<List<MangaDto>> by FlexibleList(MangaDto.serializer())
+
+@Serializable
+data class CatalogDto(
+    @Serializable(with = MangaList::class) val manga: List<MangaDto> = emptyList(),
+    @SerialName("has_more")
+    @Serializable(with = FlexibleBool::class)
+    val hasMore: Boolean = false,
+    @Serializable(with = FlexibleInt::class) val total: Int = 0,
+)
+
+@Serializable
+data class ChapterDto(
+    @Serializable(with = FlexibleString::class) val id: String = "",
+    @SerialName("chapter_num")
+    @Serializable(with = FlexibleString::class)
+    val chapterNum: String = "",
+    @Serializable(with = FlexibleString::class) val volume: String = "",
+    @Serializable(with = FlexibleString::class) val title: String = "",
+    @SerialName("published_at")
+    @Serializable(with = FlexibleString::class)
+    val publishedAt: String = "",
+    @SerialName("pages_count")
+    @Serializable(with = FlexibleInt::class)
+    val pagesCount: Int = 0,
+    @SerialName("scanlation_group")
+    @Serializable(with = FlexibleString::class)
+    val scanlationGroup: String = "",
+)
+
+object ChapterList : KSerializer<List<ChapterDto>> by FlexibleList(ChapterDto.serializer())
+
+@Serializable
+data class ChaptersDto(
+    @Serializable(with = ChapterList::class) val chapters: List<ChapterDto> = emptyList(),
+    @Serializable(with = FlexibleInt::class) val total: Int = 0,
+)
+
+@Serializable
+data class PagesDto(
+    @Serializable(with = FlexibleStringList::class) val pages: List<String> = emptyList(),
+)
+'''
+
+_KT_SOURCE = '''package @@PKG@@
+
+import android.widget.Toast
+import androidx.preference.ListPreference
+import androidx.preference.PreferenceScreen
+import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.source.ConfigurableSource
+import eu.kanade.tachiyomi.source.model.Filter
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.MangasPage
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.online.HttpSource
+import keiyoushi.annotation.Source
+import keiyoushi.network.rateLimit
+import keiyoushi.utils.getPreferencesLazy
+import keiyoushi.utils.parseAs
+import kotlinx.serialization.json.Json
+import okhttp3.Headers
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import java.time.OffsetDateTime
+import kotlin.time.Duration.Companion.seconds
+
+/**
+ * @@NAME@@ (@@HOST@@) — сгенерировано extension-forge.
+ *
+ * @@NOTES@@
+ */
+@Source
+class @@CLASS@@(
+    override val name: String,
+    override val baseUrl: String,
+    override val lang: String,
+    override val id: Long,
+) : HttpSource(),
+    ConfigurableSource {
+
+    override val supportsLatest = true
+
+    private val json = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+    }
+
+    private val preferences by getPreferencesLazy()
+
+    private val baseUrlHost = baseUrl.toHttpUrl().host
+
+    override val client: OkHttpClient = network.client.newBuilder()
+        .connectTimeout(30.seconds)
+        .readTimeout(60.seconds)
+        .rateLimit(4, 1.seconds) { it.host == baseUrlHost }
+        .addInterceptor { chain ->
+            chain.proceed(
+                chain.request().newBuilder()
+                    .header(API_KEY_HEADER, API_KEY)
+                    .build(),
+            )
+        }
+        .build()
+
+    override fun headersBuilder() = Headers.Builder().apply {
+        add("Referer", "$baseUrl/")
+        add("User-Agent", "Mozilla/5.0 (Linux; Android 14) @@CLASS@@/1.0")
+    }
+
+    // ================================ Качество ================================
+
+    private val preferredQuality
+        get() = preferences.getString(QUALITY_PREF, DEFAULT_QUALITY) ?: DEFAULT_QUALITY
+
+    override fun setupPreferenceScreen(screen: PreferenceScreen) {
+        ListPreference(screen.context).apply {
+            key = QUALITY_PREF
+            title = "Качество изображений"
+            entries = QUALITY_LABELS
+            entryValues = QUALITY_IDS
+            summary = "%s"
+            setDefaultValue(DEFAULT_QUALITY)
+            setOnPreferenceChangeListener { _, _ ->
+                Toast.makeText(
+                    screen.context,
+                    "Для применения очистите кэш глав (Настройки → Дополнительно)",
+                    Toast.LENGTH_LONG,
+                ).show()
+                true
+            }
+        }.let(screen::addPreference)
+    }
+
+    // ============================== Каталог/поиск ==============================
+
+    private fun catalogUrl(page: Int, sort: String, query: String? = null): HttpUrl =
+        "$baseUrl$CATALOG_PATH".toHttpUrl().newBuilder()
+            .addQueryParameter("lang", lang)
+            .addQueryParameter("sort", sort)
+            .addQueryParameter("page", page.toString())
+            .addQueryParameter("per_page", PER_PAGE.toString())
+            .apply {
+                query?.takeIf { it.isNotBlank() }?.let { addQueryParameter("q", it) }
+            }
+            .build()
+
+    override fun popularMangaRequest(page: Int): Request =
+        GET(catalogUrl(page, DEFAULT_SORT), headers)
+
+    override fun popularMangaParse(response: Response): MangasPage {
+        val data = response.parseAs<CatalogDto>(json)
+        return MangasPage(data.manga.map { it.toSManga() }, data.hasMore)
+    }
+
+    override fun latestUpdatesRequest(page: Int): Request =
+        GET(catalogUrl(page, LATEST_SORT), headers)
+
+    override fun latestUpdatesParse(response: Response): MangasPage = popularMangaParse(response)
+
+    override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
+        var sort = DEFAULT_SORT
+        var status = ""
+        var ageRating = ""
+
+        filters.forEach { filter ->
+            when (filter) {
+                is SortFilter -> sort = filter.selected
+                is StatusFilter -> status = filter.selected
+                is AgeRatingFilter -> ageRating = filter.selected
+                else -> {}
+            }
+        }
+
+        val url = catalogUrl(page, sort, query).newBuilder()
+        if (status.isNotEmpty()) url.addQueryParameter("status", status)
+        if (ageRating.isNotEmpty()) url.addQueryParameter("age_rating", ageRating)
+        return GET(url.build(), headers)
+    }
+
+    override fun searchMangaParse(response: Response): MangasPage = popularMangaParse(response)
+
+    // ================================ Детали ================================
+
+    override fun mangaDetailsRequest(manga: SManga): Request =
+        GET(baseUrl + DETAILS_PATH.replace("{id}", manga.url), headers)
+
+    override fun mangaDetailsParse(response: Response): SManga =
+        response.parseAs<MangaDto>(json).toSManga()
+
+    // ================================= Главы =================================
+
+    override fun chapterListRequest(manga: SManga): Request = chapterPageRequest(manga.url, 1)
+
+    private fun chapterPageRequest(mangaId: String, page: Int): Request =
+        GET(
+            baseUrl + CHAPTERS_PATH.replace("{id}", mangaId) +
+                "?lang=" + lang + "&page=" + page,
+            headers,
+        )
+
+    override fun chapterListParse(response: Response): List<SChapter> {
+        val segments = response.request.url.pathSegments
+        val mangaId = segments.getOrNull(segments.indexOf("manga") + 1) ?: return emptyList()
+
+        var data = response.parseAs<ChaptersDto>(json)
+        val chapters = data.chapters.toMutableList()
+        var page = 1
+
+        while (chapters.isNotEmpty() && chapters.size < data.total && page < MAX_CHAPTER_PAGES) {
+            page++
+            data = client.newCall(chapterPageRequest(mangaId, page)).execute().parseAs(json)
+            if (data.chapters.isEmpty()) break
+            chapters += data.chapters
+        }
+
+        return chapters.distinctBy { it.id }.map { it.toSChapter(mangaId) }
+    }
+
+    private fun ChapterDto.toSChapter(mangaId: String): SChapter = SChapter.create().apply {
+        url = PAGES_PATH
+            .replace("{id}", mangaId)
+            .replace("{chapter}", id)
+        name = buildString {
+            if (volume.isNotEmpty() && volume != "0") append("Том $volume ")
+            append("Глава $chapterNum")
+            if (title.isNotEmpty()) append(" — $title")
+        }
+        chapter_number = chapterNum.toFloatOrNull() ?: -1f
+        scanlator = scanlationGroup.takeIf { it.isNotEmpty() }
+        date_upload = publishedAt.toEpochMillis()
+    }
+
+    private fun String.toEpochMillis(): Long = runCatching {
+        OffsetDateTime.parse(this).toInstant().toEpochMilli()
+    }.getOrDefault(0L)
+
+    // ================================ Страницы ================================
+
+    override fun pageListRequest(chapter: SChapter): Request =
+        GET("$baseUrl${chapter.url}?quality=$preferredQuality", headers)
+
+    override fun pageListParse(response: Response): List<Page> =
+        response.parseAs<PagesDto>(json).pages.mapIndexed { index, url ->
+            Page(index, imageUrl = url)
+        }
+
+    override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
+
+    override fun imageRequest(page: Page): Request =
+        GET(page.imageUrl!!, headers)
+
+    // ================================ Маппинг ================================
+
+    private fun MangaDto.toSManga(): SManga = SManga.create().apply {
+        url = id
+        title = titleRu.ifBlank { title }
+        thumbnail_url = coverUrl.takeIf { it.isNotEmpty() }?.let {
+            if (it.startsWith("http")) it else baseUrl + it
+        }
+        author = this@toSManga.author.takeIf { it.isNotEmpty() }
+        artist = this@toSManga.artist.takeIf { it.isNotEmpty() }
+        description = this@toSManga.descriptionRu.ifBlank { this@toSManga.description }
+        genre = (genres + themes).distinct().joinToString(", ").takeIf { it.isNotEmpty() }
+        status = this@toSManga.status.toSMangaStatus()
+        initialized = false
+    }
+
+    private fun String.toSMangaStatus(): Int = when (this) {
+        "ongoing" -> SManga.ONGOING
+        "completed" -> SManga.COMPLETED
+        "hiatus" -> SManga.ON_HIATUS
+        "dropped", "cancelled" -> SManga.CANCELLED
+        else -> SManga.UNKNOWN
+    }
+
+    // ================================ Фильтры ================================
+
+@@FILTERS@@
+    override fun getFilterList() = FilterList(
+        SortFilter(),
+        StatusFilter(),
+        AgeRatingFilter(),
+    )
+
+    companion object {
+        private const val API_KEY_HEADER = "@@API_KEY_HEADER@@"
+        private const val API_KEY = "@@API_KEY@@"
+        private const val QUALITY_PREF = "preferred_quality"
+        private const val DEFAULT_QUALITY = "@@DEFAULT_QUALITY@@"
+        private const val CATALOG_PATH = "@@CATALOG_PATH@@"
+        private const val DETAILS_PATH = "@@DETAILS_PATH@@"
+        private const val CHAPTERS_PATH = "@@CHAPTERS_PATH@@"
+        private const val PAGES_PATH = "@@PAGES_PATH@@"
+        private const val PER_PAGE = @@PER_PAGE@@
+        private const val MAX_CHAPTER_PAGES = 20
+        private const val DEFAULT_SORT = "@@DEFAULT_SORT@@"
+        private const val LATEST_SORT = "@@LATEST_SORT@@"
+        private val QUALITY_IDS = arrayOf(@@QUALITY_IDS@@)
+        private val QUALITY_LABELS = arrayOf(@@QUALITY_LABELS@@)
+    }
+}
+'''
+
+
+def _kotlin_array(values: list[str]) -> str:
+    return ", ".join(f'"{v}"' for v in values)
+
+
+def _render_filters(api: dict) -> str:
+    sorts = api.get("sorts") or [{"id": "popular", "label": "По популярности"}]
+    statuses = api.get("statuses") or []
+    age_ratings = api.get("age_ratings") or []
+
+    blocks = [
+        "    private class SortFilter :\n"
+        '        Filter.Select<String>(\n'
+        '            "Сортировка",\n'
+        f"            arrayOf({_kotlin_array([s['label'] for s in sorts])}),\n"
+        "        ) {\n"
+        f"        val selected get() = arrayOf({_kotlin_array([s['id'] for s in sorts])})[state]\n"
+        "    }\n"
+    ]
+    if statuses:
+        blocks.append(
+            "    private class StatusFilter :\n"
+            '        Filter.Select<String>(\n'
+            '            "Статус",\n'
+            f"            arrayOf({_kotlin_array([s['label'] for s in statuses])}),\n"
+            "        ) {\n"
+            f"        val selected get() = arrayOf({_kotlin_array([s['id'] for s in statuses])})[state]\n"
+            "    }\n"
+        )
+    if age_ratings:
+        blocks.append(
+            "    private class AgeRatingFilter :\n"
+            '        Filter.Select<String>(\n'
+            '            "Возрастной рейтинг",\n'
+            f"            arrayOf({_kotlin_array([s['label'] for s in age_ratings])}),\n"
+            "        ) {\n"
+            f"        val selected get() = arrayOf({_kotlin_array([s['id'] for s in age_ratings])})[state]\n"
+            "    }\n"
+        )
+    return "\n".join(blocks)
+
+
+def render_mihon_api(site: SiteSpec) -> None:
+    """Полноценный клиент JSON API: каталог, поиск, детали, главы, страницы, качество."""
+    repo = REPOS["mihon"]
+    module = repo / "src" / site.lang / site.site_id
+    pkg_dir = module / "src" / "eu" / "kanade" / "tachiyomi" / "extension" / site.lang / site.site_id
+    pkg_dir.mkdir(parents=True, exist_ok=True)
+
+    api = site.api
+    cls = class_name(site)
+    pkg = package_name(site)
+    host = site.base_url.split("//", 1)[-1].split("/")[0]
+
+    source_id = _stable_source_id(site)
+    version_code = site.ext_version_code or _next_version_code(module)
+    content_warning = "NSFW" if site.nsfw else "SAFE"
+    qualities = site.qualities or [{"id": "default", "label": "По умолчанию"}]
+    default_quality = site.default_quality or qualities[0]["id"]
+    sorts = api.get("sorts") or [{"id": "popular", "label": "По популярности"}]
+    default_sort = api.get("default_sort", sorts[0]["id"])
+    latest_sort = api.get("latest_sort", next((s["id"] for s in sorts if "latest" in s["id"].lower()), default_sort))
+
+    gradle = f"""import io.github.keiyoushi.gradle.api.ContentWarning
+
+plugins {{
+    alias(kei.plugins.extension)
+}}
+
+keiyoushi {{
+    name = "{site.name}"
+    versionCode = {version_code}
+    contentWarning = ContentWarning.{content_warning}
+    libVersion = "1.4"
+
+    source {{
+        baseUrl = "{site.base_url}"
+        lang = "{site.lang}"
+        id = {source_id}L
+    }}
+}}
+"""
+    (module / "build.gradle.kts").write_text(gradle, encoding="utf-8")
+
+    replacements = {
+        "@@PKG@@": pkg,
+        "@@CLASS@@": cls,
+        "@@NAME@@": site.name,
+        "@@HOST@@": host,
+        "@@NOTES@@": site.notes.replace("*/", "* /"),
+    }
+    dto_kt = _KT_SERIALIZERS
+    for key, value in replacements.items():
+        dto_kt = dto_kt.replace(key, value)
+    (pkg_dir / "Dto.kt").write_text(dto_kt, encoding="utf-8")
+
+    source_kt = _KT_SOURCE
+    source_replacements = dict(replacements)
+    source_replacements.update(
+        {
+            "@@FILTERS@@": _render_filters(api),
+            "@@API_KEY_HEADER@@": api.get("key_header", "X-API-Key"),
+            "@@API_KEY@@": api.get("api_key", ""),
+            "@@DEFAULT_QUALITY@@": default_quality,
+            "@@CATALOG_PATH@@": api.get("catalog", "/api/v1/manga/catalog"),
+            "@@DETAILS_PATH@@": api.get("details", "/api/v1/manga/{id}"),
+            "@@CHAPTERS_PATH@@": api.get("chapters", "/api/v1/manga/{id}/chapters"),
+            "@@PAGES_PATH@@": api.get("pages", "/api/v1/manga/{id}/chapters/{chapter}/pages"),
+            "@@PER_PAGE@@": str(api.get("per_page", 50)),
+            "@@DEFAULT_SORT@@": default_sort,
+            "@@LATEST_SORT@@": latest_sort,
+            "@@QUALITY_IDS@@": _kotlin_array([q["id"] for q in qualities]),
+            "@@QUALITY_LABELS@@": _kotlin_array([q["label"] for q in qualities]),
+        }
+    )
+    for key, value in source_replacements.items():
+        source_kt = source_kt.replace(key, value)
+    (pkg_dir / f"{cls}.kt").write_text(source_kt, encoding="utf-8")
+
+    generate_icons(site)
+
+
+def _stable_source_id(site: SiteSpec) -> int:
+    """Стабильный id источника (не зависит от PYTHONHASHSEED)."""
+    if site.source_id:
+        return int(site.source_id)
+    digest = hashlib.md5(site.site_id.encode("utf-8")).hexdigest()
+    return int(digest[:6], 16) % 900 + 100
+
+
+def _next_version_code(module: Path) -> int:
+    """versionCode существующего модуля + 1 (иначе 1)."""
+    gradle = module / "build.gradle.kts"
+    if not gradle.exists():
+        return 1
+    match = re.search(r"versionCode\s*=\s*(\d+)", gradle.read_text(encoding="utf-8"))
+    return int(match.group(1)) + 1 if match else 1
 
 
 def _render_quality_prefs(site: SiteSpec, kind: str) -> tuple[str, str, str]:
