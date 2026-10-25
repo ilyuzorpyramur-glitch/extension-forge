@@ -171,7 +171,26 @@ def apply_heal(result: CheckResult, ext: dict) -> None:
         base_url=ext["base_url"], version=ext["version"],
     )
     new_version = bump_extension(site)
-    print(f"  🔧 healed {list(result.healed)} → версия {new_version}, расширение будет пересобрано CI")
+    print(f"  🔧 healed {list(result.healed)} → версия {new_version}")
+    return new_version
+
+
+def push_target_repo(kind: str, message: str) -> bool:
+    """Коммитит и пушит изменения в целевом репозитории → CI пересоберёт APK."""
+    repo = REPOS[kind]
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    status = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=repo,
+        capture_output=True, text=True,
+    )
+    if not status.stdout.strip():
+        print(f"  (нет изменений в {repo.name})")
+        return False
+    subprocess.run(["git", "commit", "-m", message], cwd=repo, check=True)
+    subprocess.run(["git", "pull", "--rebase", "origin", "main"], cwd=repo, check=True)
+    subprocess.run(["git", "push", "origin", "main"], cwd=repo, check=True)
+    print(f"  ⬆ запушено в {repo.name} — CI пересоберёт и переопубликует")
+    return True
 
 
 def run(dry_run: bool = False) -> int:
@@ -194,9 +213,13 @@ def run(dry_run: bool = False) -> int:
         bad = [k for k, ok in result.selector_results.items() if not ok]
         if bad:
             print(f"  ⚠ протухшие селекторы: {bad}")
-            if result.healed:
+            if result.healed and not dry_run:
                 apply_heal(result, ext)
-            else:
+                push_target_repo(
+                    ext["kind"],
+                    f"watch: heal {ext['id']} selectors, bump version [skip ci]",
+                )
+            elif not result.healed:
                 failures += 1
                 print("  ❌ селекторы не восстановлены автоматически — нужен ручной разбор")
         else:
