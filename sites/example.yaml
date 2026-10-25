@@ -1,0 +1,35 @@
+# Декларация сайта для extension-forge.
+# Заполните селекторы — генератор создаст расширение в целевом репозитории.
+
+id: example_manga        # используется как имя каталога модуля и plugin id
+kind: mihon              # mihon | aniyomi | lnreader
+name: Example Manga      # человекочитаемое имя
+base_url: https://example.com
+lang: ru
+theme: ""                # multisrc-тема для mihon: multichan, grouple, libgroup...
+api_style: html          # html | json_api
+nsfw: false
+version: 1.0.0
+
+# Качества изображений/видео и выбор по умолчанию
+qualities:
+  - id: "720"
+    label: "720p"
+  - id: "480"
+    label: "480p"
+  - id: "360"
+    label: "360p"
+default_quality: "720"
+
+# Селекторы парсинга (CSS / JSON-пути) — по ним сторож проверяет живость
+selectors:
+  popular: ".popular-list .item"
+  search: ".search-results .item"
+  details:
+    title: "h1.title"
+    cover: ".cover img"
+    description: ".description"
+  chapters: ".chapter-list a"
+  pages: ".reader img"
+
+notes: "Пример декларации — скопируйте и заполните под свой сайт."

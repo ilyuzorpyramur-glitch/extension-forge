@@ -1,0 +1,6 @@
+# Целевые репозитории генератора (локальные клоны).
+# Расширения создаются в этих каталогах, коммитятся и пушатся оттуда.
+
+mihon:   /home/work/repos/mihon-ru-manga-repo
+aniyomi: /home/work/repos/aniyomi-ru-anime-repo
+lnreader: /home/work/repos/lnreader-ru-plugins

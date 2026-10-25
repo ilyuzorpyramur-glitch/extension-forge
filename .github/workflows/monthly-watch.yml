@@ -1,0 +1,56 @@
+name: Monthly watchdog
+
+on:
+  schedule:
+    - cron: "0 6 1 * *"   # 1-е число каждого месяца в 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    name: Check sources and heal selectors
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout forge
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install adaptive parser
+        run: pip install scrapling pyyaml && python -m scrapling install
+
+      - name: Run watchdog
+        id: watch
+        run: |
+          python3 forge.py watch --dry-run --report > watchdog-report.md || true
+          cat watchdog-report.md
+
+      - name: Apply heals and bump versions
+        run: |
+          python3 forge.py watch
+
+      - name: Commit healed specs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sites/ registry.json
+          if git diff --cached --quiet; then
+            echo "no changes"
+          else
+            git commit -m "watch: heal selectors and bump versions [skip ci]"
+            git push
+          fi
+
+      - name: Notify target repos
+        if: env.HEALED != '0'
+        run: echo "healed extensions need re-sync in target repos"
