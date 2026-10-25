@@ -214,6 +214,30 @@ def generate_icons(site: SiteSpec) -> list[Path]:
 # ---------------------------------------------------------------------------
 
 
+def format_kotlin(path: Path) -> None:
+    """Best-effort ktlint-форматирование сгенерированного Kotlin (если есть кэш)."""
+    import glob
+    import shutil
+
+    java = shutil.which("java")
+    if not java:
+        return
+    jars = glob.glob(
+        str(Path.home() / ".gradle/caches/modules-2/files-2.1/**/*.jar"), recursive=True
+    )
+    if not jars:
+        return
+    try:
+        subprocess.run(
+            [java, "-cp", ":".join(jars), "com.pinterest.ktlint.Main", "-F", str(path)],
+            capture_output=True,
+            timeout=300,
+            check=False,
+        )
+    except Exception:
+        pass
+
+
 def render_mihon(site: SiteSpec) -> None:
     """Генерирует mihon-расширение: API-клиент или HTML-заготовку."""
     if site.api_style == "json_api_v2" and site.api:
@@ -266,7 +290,9 @@ def render_mihon_api_v2(site: SiteSpec) -> None:
 
     _write_gradle(module, site, version_code, source_id)
     code = mihon_api_v2.render(site, pkg, cls, host, version_code, source_id, genres)
-    (pkg_dir / f"{cls}.kt").write_text(code, encoding="utf-8")
+    target = pkg_dir / f"{cls}.kt"
+    target.write_text(code, encoding="utf-8")
+    format_kotlin(target)
     generate_icons(site)
 
 

@@ -141,19 +141,25 @@ def render(site, pkg: str, cls: str, host: str, version_code: int, source_id: in
     api = site.api
     lines: list[str] = []
 
-    lines.append(
-        HEADER.format(
-            pkg=pkg,
-            cls=cls,
-            name=site.name,
-            host=host,
-            notes=(site.notes or "").replace("*/", "* /"),
-            rate=api.get("rate", 4),
-            header_lines="\n".join(
-                f'        add("{k}", "{v}")' for k, v in (api.get("headers") or {}).items()
-            ),
-        )
+    head = HEADER.format(
+        pkg=pkg,
+        cls=cls,
+        name=site.name,
+        host=host,
+        notes=(site.notes or "").replace("*/", "* /"),
+        rate=api.get("rate", 4),
+        header_lines="\n".join(
+            f'        add("{k}", "{v}")' for k, v in (api.get("headers") or {}).items()
+        ),
     )
+    if not site.qualities:
+        head = head.replace("import android.widget.Toast\n", "")
+        head = head.replace("import androidx.preference.ListPreference\n", "")
+    if not (api.get("options") or {}):
+        head = head.replace("import androidx.preference.SwitchPreferenceCompat\n", "")
+    if not ((api.get("chapters") or {}).get("steps") or []):
+        head = head.replace("import rx.Observable\n", "")
+    lines.append(head)
 
     lines.append(_prefs(site, api))
     lines.append(_list_section(api))
@@ -433,6 +439,10 @@ def _chapters_section(api) -> str:
     body: list[str] = ["    override fun fetchChapterList(manga: SManga): Observable<List<SChapter>> = Observable.fromCallable {\n"]
     vars_: dict[str, str] = {}
 
+    def camel(name: str) -> str:
+        parts = name.split("_")
+        return parts[0] + "".join(part[:1].upper() + part[1:] for part in parts[1:])
+
     for idx, step in enumerate(steps[:-1], start=1):
         select = step.get("select") or {}
         pre = f"step{idx}"
@@ -445,17 +455,19 @@ def _chapters_section(api) -> str:
             pick = f"{main_expr} ?: {pre}Items.maxByOrNull {{ it.number({_kotlin_str(mx)}) }}"
             body.append(f"        val picked{idx} = {pick}\n")
             for var_name, field in (select.get("save") or {}).items():
-                body.append(f"        val {var_name} = picked{idx}?.text({_kotlin_str(field)}) ?: \"\"\n")
-                vars_[var_name] = var_name
+                kotlin_name = camel(var_name)
+                body.append(f"        val {kotlin_name} = picked{idx}?.text({_kotlin_str(field)}) ?: \"\"\n")
+                vars_[var_name] = kotlin_name
             for var_name, field in (select.get("save_number") or {}).items():
-                body.append(f"        val {var_name} = picked{idx}?.text({_kotlin_str(field)}) ?: \"\"\n")
-                vars_[var_name] = var_name
+                kotlin_name = camel(var_name)
+                body.append(f"        val {kotlin_name} = picked{idx}?.text({_kotlin_str(field)}) ?: \"\"\n")
+                vars_[var_name] = kotlin_name
         body.append("\n")
 
     last = steps[-1]
     expr = f"API_BASE + CHAPTERS_PATH"
-    for var in vars_:
-        expr += f'.replace("{{{var}}}", {var})'
+    for var, kotlin_name in vars_.items():
+        expr += f'.replace("{{{var}}}", {kotlin_name})'
     expr += '.replace("{id}", manga.url)'
 
     paged = last.get("paged")
@@ -465,7 +477,7 @@ def _chapters_section(api) -> str:
         prefix = "?" if index == 0 else "&"
         if isinstance(value, str) and value.startswith("{") and value.endswith("}"):
             var = value[1:-1]
-            expression = "manga.url" if var == "id" else var
+            expression = "manga.url" if var == "id" else vars_.get(var, var)
             segments.append(f'"{prefix}{param}=" + {expression}')
         else:
             segments.append(f'"{prefix}{param}={value}"')
