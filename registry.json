@@ -11,9 +11,9 @@
       "versionCode": 3,
       "watch": true,
       "last_checked": null,
-      "last_status": "fixed",
+      "last_status": "generated",
       "base_url": "https://mangalove.ru",
-      "version_code": "1",
+      "version_code": "104003",
       "nsfw": false,
       "selectors": {
         "popular": "GET /api/v1/manga/catalog?sort=rating → manga[].id",
@@ -45,26 +45,28 @@
       "kind": "mihon",
       "name": "AstraManga",
       "base_url": "https://astramanga.org",
-      "version": "1.0.0",
-      "version_code": "1",
+      "version": "1.4.2",
+      "version_code": "104002",
       "nsfw": false,
       "watch": true,
       "selectors": {},
       "qualities": [],
-      "default_quality": ""
+      "default_quality": "",
+      "last_status": "generated"
     },
     {
       "id": "tomilolib",
       "kind": "mihon",
       "name": "Tomilo-lib",
       "base_url": "https://tomilo-lib.ru",
-      "version": "1.0.0",
-      "version_code": "1",
+      "version": "1.4.2",
+      "version_code": "104002",
       "nsfw": false,
       "watch": true,
       "selectors": {},
       "qualities": [],
-      "default_quality": ""
+      "default_quality": "",
+      "last_status": "generated"
     }
   ]
 }

@@ -360,6 +360,8 @@ def _list_section(api) -> str:
         """        return GET(builder.build(), headers)
     }
 
+    override fun searchMangaParse(response: Response): MangasPage = parseList(response)
+
 """
     )
 
