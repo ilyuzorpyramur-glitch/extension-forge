@@ -11,7 +11,7 @@
       "versionCode": 3,
       "watch": true,
       "last_checked": null,
-      "last_status": "generated",
+      "last_status": "published",
       "base_url": "https://mangalove.ru",
       "version_code": "104003",
       "nsfw": false,
@@ -45,28 +45,55 @@
       "kind": "mihon",
       "name": "AstraManga",
       "base_url": "https://astramanga.org",
-      "version": "1.0.0",
-      "version_code": "1",
+      "version": "1.4.3",
+      "version_code": "104003",
       "nsfw": false,
       "watch": true,
       "selectors": {},
       "qualities": [],
       "default_quality": "",
-      "last_status": "generated"
+      "last_status": "published",
+      "last_version": "1.4.3",
+      "last_version_code": "104003"
     },
     {
       "id": "tomilolib",
       "kind": "mihon",
       "name": "Tomilo-lib",
       "base_url": "https://tomilo-lib.ru",
-      "version": "1.0.0",
-      "version_code": "1",
+      "version": "1.4.6",
+      "version_code": "104006",
       "nsfw": false,
       "watch": true,
-      "selectors": {},
+      "selectors": {
+        "media_proxy": "/_next/image?url={url}&w=640&q=82",
+        "genres": "catalog exact-case"
+      },
       "qualities": [],
       "default_quality": "",
-      "last_status": "generated"
+      "last_status": "published",
+      "last_version": "1.4.6",
+      "last_version_code": "104006"
+    },
+    {
+      "id": "yagamiproject",
+      "kind": "mihon",
+      "name": "YagamiProject",
+      "base_url": "https://read.yagami.me",
+      "version": "1.4.7",
+      "version_code": "104007",
+      "nsfw": false,
+      "watch": true,
+      "selectors": {
+        "list": ".list .group",
+        "chapters": ".list .element",
+        "pages": ".web_pictures img.web_img"
+      },
+      "qualities": [],
+      "default_quality": "",
+      "last_version": "1.4.7",
+      "last_version_code": "104007",
+      "last_status": "published"
     }
   ]
 }

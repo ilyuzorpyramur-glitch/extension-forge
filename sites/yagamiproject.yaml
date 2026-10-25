@@ -1,0 +1,45 @@
+# YagamiProject — read.yagami.me (HTML)
+id: yagamiproject
+kind: mihon
+name: YagamiProject
+base_url: https://read.yagami.me
+lang: ru
+api_style: html
+nsfw: false
+ext_version_code: 7
+
+html:
+  rate: 2
+  list:
+    path: "/list-new/{page}"
+    latest_path: "/latest/{page}"
+    search_path: "/reader/search/?s={query}&p={page}"
+    items: ".list .group"
+    link: ".title a"
+    cover: ".cover_mini > img"
+    cover_replace_from: "thumb_"
+    has_next: ".panel_nav .button a"
+  details:
+    title: { selector: "title", before: " :: Yagami", split: " :: ", pick: "min" }
+    cover: ".cover img"
+    author: { selector: "li:contains(Автор(ы):)", after: "Автор(ы): ", split: " / ", pick: "min" }
+    artist: { selector: "li:contains(Художник(и):)", after: "Художник(и): ", split: " / ", pick: "min" }
+    genres: { selector: "li:contains(Жанры:)", after: "Жанры: " }
+    alt: { selector: "li:contains(Название:)", after: "Название: " }
+    description: { selector: "li:contains(Описание:)", after: "Описание: " }
+    status: { selector: "li:contains(Статус перевода:) span" }
+    status_map:
+      "онгоинг": ONGOING
+      "активный": ONGOING
+      "завершён": COMPLETED
+  chapters:
+    items: ".list .element"
+    link: ".title a"
+    date_selector: ".meta_r"
+    date_after: ", "
+    scanlator_selector: ".meta_r a"
+  pages:
+    images: ".web_pictures img.web_img"
+    fallback_links: ".dropdown li a"
+
+notes: "HTML-источник: каталог /list-new, поиск /reader/search, главы по .list .element, страницы из .web_pictures."

@@ -119,11 +119,14 @@ class {cls}(
         else -> ""
     }}
 
-    private fun String.absoluteUrl(): String {{
+    private fun String.absoluteUrl(useProxy: Boolean = true): String {{
         if (isEmpty()) return ""
         var url = if (startsWith("http")) this else MEDIA_BASE + (if (startsWith("/")) this else "/" + this)
         if (MEDIA_STRIP.isNotEmpty() && url.startsWith(MEDIA_BASE + MEDIA_STRIP)) {{
             url = MEDIA_BASE + url.removePrefix(MEDIA_BASE + MEDIA_STRIP)
+        }}
+        if (useProxy && MEDIA_PROXY.isNotEmpty()) {{
+            url = MEDIA_PROXY.replace("{{url}}", java.net.URLEncoder.encode(url, "UTF-8"))
         }}
         return url
     }}
@@ -580,7 +583,7 @@ def _pages_section(api) -> str:
     override fun pageListParse(response: Response): List<Page> =
         response.parseAs<JsonElement>(json).items({_kotlin_str(cfg.get("items", "data"))})
             .mapIndexed {{ index, item ->
-                Page(index, imageUrl = {url_expr}.absoluteUrl())
+                Page(index, imageUrl = {url_expr}.absoluteUrl(useProxy = false))
             }}
 
     override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
@@ -764,6 +767,7 @@ def _consts(site, api) -> str:
         f'        private const val API_BASE = "{api.get("base", "")}"',
         f'        private const val MEDIA_BASE = "{api.get("media_base", site.base_url)}"',
         f'        private const val MEDIA_STRIP = "{api.get("media_strip", "")}"',
+        f'        private const val MEDIA_PROXY = "{api.get("media_proxy", "")}"',
         f'        private const val LIST_PATH = "{list_cfg.get("path", "/")}"',
         f'        private const val SIZE = {list_cfg.get("size", 20)}',
         f'        private const val DEFAULT_SORT = "{list_cfg.get("default_sort", "")}"',

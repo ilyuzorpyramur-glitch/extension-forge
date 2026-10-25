@@ -72,6 +72,8 @@ class SiteSpec:
     source_package: str = ""
     # ContentWarning: SAFE | MIXED | NSFW
     content_warning: str = ""
+    # HTML-режим: селекторы и правила извлечения
+    html: dict = field(default_factory=dict)
 
     @classmethod
     def from_yaml(cls, path: Path) -> "SiteSpec":
@@ -97,6 +99,7 @@ class SiteSpec:
             source_class=data.get("class_name", ""),
             source_package=data.get("package", ""),
             content_warning=data.get("content_warning", ""),
+            html=data.get("html", {}),
         )
 
 
@@ -240,7 +243,9 @@ def format_kotlin(path: Path) -> None:
 
 def render_mihon(site: SiteSpec) -> None:
     """Генерирует mihon-расширение: API-клиент или HTML-заготовку."""
-    if site.api_style == "json_api_v2" and site.api:
+    if site.api_style == "html" and site.html:
+        render_mihon_html(site)
+    elif site.api_style == "json_api_v2" and site.api:
         render_mihon_api_v2(site)
     elif site.api:
         render_mihon_api(site)
@@ -270,6 +275,29 @@ keiyoushi {{
 }}
 """
     (module / "build.gradle.kts").write_text(gradle, encoding="utf-8")
+
+
+def render_mihon_html(site: SiteSpec) -> None:
+    """HTML-генератор: Jsoup + селекторы из блока html декларации."""
+    import mihon_html
+
+    repo = REPOS["mihon"]
+    module = repo / "src" / site.lang / site.site_id
+    pkg_dir = module / "src" / "eu" / "kanade" / "tachiyomi" / "extension" / site.lang / site.site_id
+    pkg_dir.mkdir(parents=True, exist_ok=True)
+
+    cls = site.source_class or class_name(site)
+    pkg = site.source_package or package_name(site)
+    host = site.base_url.split("//", 1)[-1].split("/")[0]
+    source_id = _stable_source_id(site)
+    version_code = site.ext_version_code or _next_version_code(module)
+
+    _write_gradle(module, site, version_code, source_id)
+    code = mihon_html.render(site, pkg, cls, host)
+    target = pkg_dir / f"{cls}.kt"
+    target.write_text(code, encoding="utf-8")
+    format_kotlin(target)
+    generate_icons(site)
 
 
 def render_mihon_api_v2(site: SiteSpec) -> None:
@@ -913,6 +941,44 @@ def fetch_genres(site: SiteSpec) -> list[dict]:
         return json.loads(cache.read_text(encoding="utf-8"))
 
     source = cfg.get("source", "mangadex")
+    if source == "catalog":
+        headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+        headers.update(cfg.get("headers") or {})
+        values = {}
+        page = 1
+        while page <= int(cfg.get("max_pages", 40)):
+            url = (
+                cfg["base"].rstrip("/")
+                + cfg.get("path", "/titles")
+                + f"?page={page}&limit=50"
+                + (f"&{cfg['extra']}" if cfg.get("extra") else "")
+            )
+            request = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(request, timeout=30) as response:
+                payload = json.load(response)
+            items = payload
+            for segment in (cfg.get("items") or "").split("."):
+                if segment:
+                    items = items[segment]
+            if not items:
+                break
+            for item in items:
+                for value in item.get(cfg.get("field", "genres")) or []:
+                    if isinstance(value, str) and value.strip():
+                        values[value.strip()] = True
+            page += 1
+        exact = {name.lower(): name for name in values}
+        only = cfg.get("list") or []
+        if only:
+            wanted = [
+                (item["name"] if isinstance(item, dict) else item) for item in only
+            ]
+            names = [exact[name.lower()] for name in wanted if name.lower() in exact]
+        else:
+            names = list(values)
+        result = [{"id": name, "name": name} for name in sorted(set(names), key=str.lower)]
+        cache.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return result
     if source == "api":
         headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
         headers.update(cfg.get("headers") or {})
