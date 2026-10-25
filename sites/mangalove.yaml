@@ -1,0 +1,33 @@
+# MangaLove — mangalove.ru
+# API: /api/v1, ключ X-API-Key зашит во фронтенд (публичный)
+# Качества страниц: data (полное) / data-saver (сжатое)
+id: mangalove
+kind: mihon
+name: MangaLove
+base_url: https://mangalove.ru
+lang: ru
+theme: ""            # собственный API-класс, без multisrc-темы
+api_style: json_api
+nsfw: false
+version: 1.0.0
+
+# Качества изображений и выбор по умолчанию (настройки расширения в Mihon)
+qualities:
+  - id: "data"
+    label: "Полное качество"
+  - id: "data-saver"
+    label: "Экономное (data-saver)"
+default_quality: "data"
+
+# Селекторы (для сторожа: JSON-пути API и их проверки)
+selectors:
+  popular: "GET /api/v1/manga/catalog?sort=rating → manga[].id"
+  search: "GET /api/v1/manga/catalog?q= → manga[].title"
+  details:
+    title: "manga.title"
+    cover: "manga.cover_url"
+    description: "manga.description"
+  chapters: "GET /api/v1/manga/{id}/chapters → chapters[]"
+  pages: "GET /api/v1/manga/{id}/chapters/{ch}/pages?quality=data → pages[]"
+
+notes: "API-ключ X-API-Key: a5e6bd2a…4ad (из фронтенда). Сортировки: rating, popular, latest, siteLatest. Главы ≤100/запрос, каталог ≤50/запрос."
