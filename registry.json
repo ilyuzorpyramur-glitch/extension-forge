@@ -1,3 +1,18 @@
 {
-  "extensions": []
+  "extensions": [
+    {
+      "id": "mangalove",
+      "name": "MangaLove",
+      "kind": "mihon",
+      "target_repo": "mihon-ru-manga-repo",
+      "module": "src/ru/mangalove",
+      "declaration": "sites/mangalove.yaml",
+      "version": "1.4.1",
+      "versionCode": 1,
+      "watch": true,
+      "last_checked": null,
+      "last_status": "generated",
+      "base_url": "https://mangalove.ru"
+    }
+  ]
 }
