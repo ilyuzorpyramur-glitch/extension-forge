@@ -10,7 +10,7 @@ lang: ru
 api_style: json_api_v2
 nsfw: false
 version: 1.0.0
-ext_version_code: 7
+ext_version_code: 8
 source_id: 7420534233267322527
 content_warning: MIXED
 
@@ -18,8 +18,8 @@ api:
   base: https://tomilo-lib.ru/api
   media_base: https://cdn.tomilo-lib.ru
   media_strip: "/uploads"
-  media_proxy: "https://tomilo-lib.ru/_next/image?url={url}&w=640&q=82"
-  rate: 4
+  media_proxy: "https://tomilo-lib.ru/_next/image?url={url}&w=384&q=75"
+  rate: 6
   list:
     path: /titles
     items: data.titles

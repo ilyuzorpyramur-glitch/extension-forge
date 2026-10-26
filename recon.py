@@ -61,6 +61,65 @@ def site_name(html: str, host: str) -> str:
     return host.split(".")[0].capitalize()
 
 
+ANIME_WORDS = (
+    "аниме", "озвучка", "серия", "эпизод", "anime", "episode",
+    "сериал", "плеер", "player", "video", "видео",
+)
+NOVEL_WORDS = ("ранобэ", "новелла", "ранобе", "novel", "light novel", "книга")
+NSFW_HOSTS = ("hentai", "henta", "adult", "porn", "xxx", "nude", "erotic", "18plus")
+NSFW_STRONG = ("хентай", "hentai", "порно", "porn", "xxx", "тентакли")
+NSFW_MEDIUM = ("18+", "этти", "ecchi", "adult", "nsfw", "для взрослых", "эротика")
+
+
+def detect_kind(html: str, url: str) -> str:
+    """Определяет тип сайта: mihon (манга), aniyomi (аниме), lnreader (ранобэ)."""
+    host = _host(url).lower()
+    path = url.lower()
+    text = html.lower()
+
+    if any(word in host or word in path for word in ("ranobe", "novel", "книг", "book")):
+        return "lnreader"
+    if any(word in host or word in path for word in ("anime", "аниме", "video", "serial")):
+        return "aniyomi"
+
+    novel_hits = sum(1 for word in NOVEL_WORDS if word in text)
+    anime_hits = sum(1 for word in ANIME_WORDS if word in text)
+    if novel_hits >= 3 and novel_hits > anime_hits:
+        return "lnreader"
+    if anime_hits >= 4 and anime_hits > novel_hits * 2:
+        return "aniyomi"
+    return "mihon"
+
+
+def detect_nsfw(html: str, url: str) -> bool:
+    """Определяет, что сайт для взрослых (18+)."""
+    host = _host(url).lower()
+    if any(word in host for word in NSFW_HOSTS):
+        return True
+    text = html.lower()
+    strong = sum(text.count(word) for word in NSFW_STRONG)
+    medium = sum(text.count(word) for word in NSFW_MEDIUM)
+    # «18+», «этти» и «эротика» встречаются и на обычных сайтах (жанр в
+    # каталоге), поэтому смотрим на плотность: у взрослых сайтов явные
+    # слова повторяются десятками раз.
+    return strong >= 3 or medium >= 8
+
+
+def detect_content_rating(html: str, url: str) -> str:
+    """Три уровня рейтинга: safe | mixed | nsfw (как ContentWarning в Mihon)."""
+    host = _host(url).lower()
+    if any(word in host for word in NSFW_HOSTS):
+        return "nsfw"
+    text = html.lower()
+    strong = sum(text.count(word) for word in NSFW_STRONG)
+    medium = sum(text.count(word) for word in NSFW_MEDIUM)
+    if strong >= 3:
+        return "nsfw"
+    if strong >= 1 or medium >= 3:
+        return "mixed"
+    return "safe"
+
+
 def _walk_arrays(node, path=""):
     if isinstance(node, list):
         if node and isinstance(node[0], dict):
@@ -210,6 +269,9 @@ def profile(url: str, key_header: str = "", key: str = "") -> dict:
         "host": host,
         "name": name,
         "bundles": len(bundles),
+        "kind": detect_kind(html, url),
+        "nsfw": detect_nsfw(html, url),
+        "rating": detect_content_rating(html, url),
         "base": "",
         "list_path": "",
         "items": "",
@@ -335,12 +397,13 @@ def build_yaml(result: dict, site_id: str, lang: str = "ru") -> str:
     lines = [
         f"# {result['name']} — {result['host']} (разведка {result['url']})",
         f"id: {site_id}",
-        "kind: mihon",
+        f"kind: {result.get('kind') or 'mihon'}",
         f'name: "{result["name"]}"',
         f'base_url: {result["url"]}',
         f"lang: {lang}",
         "api_style: json_api_v2",
-        "nsfw: false",
+        f"nsfw: {str(bool(result.get('nsfw'))).lower()}",
+        f"rating: {result.get('rating') or 'safe'}",
         "",
         "api:",
         f'  base: "{result["base"]}"',

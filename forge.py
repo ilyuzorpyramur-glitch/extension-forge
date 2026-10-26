@@ -74,6 +74,8 @@ class SiteSpec:
     content_warning: str = ""
     # HTML-режим: селекторы и правила извлечения
     html: dict = field(default_factory=dict)
+    # safe | mixed | nsfw — если пусто, считается из nsfw
+    rating: str = ""
 
     @classmethod
     def from_yaml(cls, path: Path) -> "SiteSpec":
@@ -100,6 +102,7 @@ class SiteSpec:
             source_package=data.get("package", ""),
             content_warning=data.get("content_warning", ""),
             html=data.get("html", {}),
+            rating=str(data.get("rating", "") or "").lower(),
         )
 
 
@@ -254,7 +257,9 @@ def render_mihon(site: SiteSpec) -> None:
 
 
 def _write_gradle(module: Path, site: SiteSpec, version_code: int, source_id: int) -> None:
-    content_warning = site.content_warning or ("NSFW" if site.nsfw else "SAFE")
+    content_warning = site.content_warning or (
+        site.rating.upper() if site.rating in ("safe", "mixed", "nsfw") else ("NSFW" if site.nsfw else "SAFE")
+    )
     gradle = f"""import io.github.keiyoushi.gradle.api.ContentWarning
 
 plugins {{
