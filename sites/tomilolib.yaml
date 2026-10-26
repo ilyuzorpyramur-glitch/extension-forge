@@ -9,8 +9,8 @@ base_url: https://tomilo-lib.ru
 lang: ru
 api_style: json_api_v2
 nsfw: false
-version: 1.4.9
-ext_version_code: 9
+version: 1.4.10
+ext_version_code: 10
 source_id: 7420534233267322527
 content_warning: MIXED
 
