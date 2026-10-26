@@ -392,14 +392,76 @@ def _find_first_id(node, keys) -> str:
     return walk(node)
 
 
-def build_yaml(result: dict, site_id: str, lang: str = "ru") -> str:
-    """Черновик sites/<id>.yaml из результатов разведки."""
+def _yaml_str(value: str) -> str:
+    escaped = (value or "").replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _build_html_yaml(result: dict, site_id: str, lang: str) -> str:
+    """Декларация для HTML-сайта (без JSON API) из подсказок smartparse.
+
+    smartparse даёт только список карточек; детали/главы/страницы требуют
+    отдельного разбора страницы тайтла — они остаются TODO с примером.
+    """
+    html = result.get("html") or {}
     lines = [
         f"# {result['name']} — {result['host']} (разведка {result['url']})",
         f"id: {site_id}",
         f"kind: {result.get('kind') or 'mihon'}",
-        f'name: "{result["name"]}"',
-        f'base_url: {result["url"]}',
+        f"name: {_yaml_str(result['name'])}",
+        f"base_url: {result['url']}",
+        f"lang: {lang}",
+        "api_style: html",
+        f"nsfw: {str(bool(result.get('nsfw'))).lower()}",
+        f"rating: {result.get('rating') or 'safe'}",
+        "",
+        "html:",
+        "  rate: 3",
+        "  list:",
+        '    path: "/"            # TODO: страница каталога/популярного, если не "/"',
+        '    latest_path: "/"      # TODO: страница последних обновлений',
+        '    search_path: ""       # TODO: например "/search?q={query}"',
+        f"    items: {_yaml_str(html.get('item_selector') or '.card a')}",
+        f"    link: {_yaml_str(html.get('item_selector') or 'a')}",
+        f"    cover: {_yaml_str('img')}",
+        '    has_next: ""          # TODO: селектор кнопки "далее", если список постраничный',
+        "  details:",
+        '    title: { selector: "h1" }   # TODO: проверить на странице тайтла',
+        '    cover: ".cover img, .poster img"',
+        '    description: { selector: ".description" }',
+        '    genres: { selector: ".genres" }',
+        "  chapters:",
+        '    items: ".chapter-list a"   # TODO: селектор строки главы',
+        '    link: "a"',
+        "  pages:",
+        '    images: ".reader img"      # TODO: селектор картинок читалки',
+    ]
+    if html.get("sample"):
+        lines.append("")
+        lines.append("# найдено карточек: " + str(html.get("items_found", "?")))
+        for item in html["sample"][:3]:
+            lines.append(f"#   - {item.get('title', '')!r} -> {item.get('url', '')}")
+    lines.append("")
+    lines.append(
+        "# TODO: это каркас, не готовое расширение. smartparse нашёл только карточки\n"
+        "# списка (см. образцы выше) — селекторы деталей/глав/страниц надо\n"
+        "# проверить на реальной странице тайтла и поправить руками, затем:\n"
+        "#   python3 forge.py generate sites/" + site_id + ".yaml"
+    )
+    return "\n".join(lines) + "\n"
+
+
+def build_yaml(result: dict, site_id: str, lang: str = "ru") -> str:
+    """Черновик sites/<id>.yaml из результатов разведки."""
+    if not result.get("list_path") and result.get("html"):
+        return _build_html_yaml(result, site_id, lang)
+
+    lines = [
+        f"# {result['name']} — {result['host']} (разведка {result['url']})",
+        f"id: {site_id}",
+        f"kind: {result.get('kind') or 'mihon'}",
+        f"name: {_yaml_str(result['name'])}",
+        f"base_url: {result['url']}",
         f"lang: {lang}",
         "api_style: json_api_v2",
         f"nsfw: {str(bool(result.get('nsfw'))).lower()}",
