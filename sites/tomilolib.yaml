@@ -10,7 +10,7 @@ lang: ru
 api_style: json_api_v2
 nsfw: false
 version: 1.0.0
-ext_version_code: 6
+ext_version_code: 7
 source_id: 7420534233267322527
 content_warning: MIXED
 

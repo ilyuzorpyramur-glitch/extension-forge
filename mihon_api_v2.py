@@ -121,7 +121,10 @@ class {cls}(
 
     private fun String.absoluteUrl(useProxy: Boolean = true): String {{
         if (isEmpty()) return ""
-        var url = if (startsWith("http")) this else MEDIA_BASE + (if (startsWith("/")) this else "/" + this)
+        var url = this
+        if (!url.startsWith("http")) {{
+            url = MEDIA_BASE + (if (url.startsWith("/")) url else "/" + url)
+        }}
         if (MEDIA_STRIP.isNotEmpty() && url.startsWith(MEDIA_BASE + MEDIA_STRIP)) {{
             url = MEDIA_BASE + url.removePrefix(MEDIA_BASE + MEDIA_STRIP)
         }}

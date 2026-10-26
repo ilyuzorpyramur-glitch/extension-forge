@@ -61,14 +61,11 @@
       "kind": "mihon",
       "name": "Tomilo-lib",
       "base_url": "https://tomilo-lib.ru",
-      "version": "1.4.6",
-      "version_code": "104006",
+      "version": "1.0.0",
+      "version_code": "1",
       "nsfw": false,
       "watch": true,
-      "selectors": {
-        "media_proxy": "/_next/image?url={url}&w=640&q=82",
-        "genres": "catalog exact-case"
-      },
+      "selectors": {},
       "qualities": [],
       "default_quality": "",
       "last_status": "published",
