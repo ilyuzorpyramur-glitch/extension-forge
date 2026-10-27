@@ -10,9 +10,9 @@ lang: ru
 theme: ""
 api_style: json_api
 nsfw: false
-version: 1.4.2
+version: 1.4.3
 source_id: 8983242087533137528
-ext_version_code: 2
+ext_version_code: 3
 
 api:
   base: "https://api.remanga.org/api"
@@ -35,4 +35,4 @@ selectors:
   chapters: "{content: [{id, chapter ('34'|'34.5'), tome, name, upload_date 'yyyy-MM-ddTHH:mm:ss', publishers[], is_paid}]}"
   pages: "{content: {pages: [{page, link, height}]}} — height>10, link без http → https://remanga.org + link"
 
-notes: "Бранча: брать ветку с max count_chapters. Платные главы помечать 💰. Кэшировать картинки img3/img5.reimg.org не нужно, но rate-limit 1-2 req/s."
+notes: "Бранча: ветка с max count_chapters (API игнорирует счётчик). Главы: fetchChapterList с кэшем веток из mangaDetailsParse. Весь топ каталога is_licensed=true и is_paid — pages отдаёт msg «Для просмотра нужно авторизироваться» без pages; exmanga мёртв; платный хвост новее последней бесплатной главы скрыт (💰 в названии). Статус «Лицензировано» = id 6."
