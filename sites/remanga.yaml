@@ -10,9 +10,9 @@ lang: ru
 theme: ""
 api_style: json_api
 nsfw: false
-version: 1.4.4
+version: 1.4.5
 source_id: 8983242087533137528
-ext_version_code: 4
+ext_version_code: 5
 
 api:
   base: "https://api.remanga.org/api"

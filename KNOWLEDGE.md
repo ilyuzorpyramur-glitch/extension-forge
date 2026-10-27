@@ -156,3 +156,8 @@ CI падает на `spotlessKotlinCheck` ДО компиляции. Прави
 - Симптом от пользователя (скриншот): Unexpected JSON token at offset N: Expected start of the object '{', but had '[' — у тайтлов, требующих авторизации, details отдаёт content как JSON-массив, а не объект (эталон это комментировал и ловил).
 - Фикс: details/resloveBranch парсят JsonElement; content не JsonObject → IOException «Для просмотра контента необходима авторизация через WebView 🌐».
 - Осторожно: не декодировать DetailsWrapperDto вслепую — сначала JsonElement-проверка content.
+
+## Remanga v1.4.5 — форма-толерантные декодеры (2026-10-27)
+- У пользователя падало «Expected start of the object '{', but had '['» на v1.4.4 на живых тайтлах (Speedster/Immortality/PickMeUp), хотя строгий live-симулятор DTO-контракта по этим трём тайтлам ошибок не нашёл — искажённая форма сидит в ответе, который краулером не воспроизвести (полный путь в тосте обрезан).
+- Решение: ВСЕ 5 точек разбора (каталог/поиск/details/chapters/pages) переведены на JsonElement + явные проверки формы + normalize-полей (img/type/status→{}, genres/categories/branches→[], строки→"") + mapNotNull+runCatching по элементам списков — «Unexpected JSON token» невозможен по построению.
+- pages: content не объект → IOException(msg ?: «Глава недоступна»); chapters: content не массив → пустой список.
