@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -31,10 +32,15 @@ SITES_DIR = FORGE_ROOT / "sites"
 TEMPLATES_DIR = FORGE_ROOT / "templates"
 REGISTRY = FORGE_ROOT / "registry.json"
 
+def _repo(target: str, default: str) -> Path:
+    """Целевой репозиторий: FORGE_REPO_LNREADER перекрывает значение по умолчанию."""
+    return Path(os.environ.get(f"FORGE_REPO_{target.upper()}", default))
+
+
 REPOS = {
-    "mihon": Path("/home/work/repos/mihon-ru-manga-repo"),
-    "aniyomi": Path("/home/work/repos/aniyomi-ru-anime-repo"),
-    "lnreader": Path("/home/work/repos/lnreader-ru-plugins"),
+    "mihon": _repo("mihon", "/home/work/repos/mihon-ru-manga-repo"),
+    "aniyomi": _repo("aniyomi", "/home/work/repos/aniyomi-ru-anime-repo"),
+    "lnreader": _repo("lnreader", "/home/work/repos/lnreader-ru-plugins"),
 }
 
 # -----------------------------------------------------------------------------
@@ -1293,6 +1299,15 @@ class {cls} : ConfigurableAnimeSource, AnimeHttpSource() {{
 
 def render_lnreader(site: SiteSpec) -> None:
     repo = REPOS["lnreader"]
+
+    # Декларация со статическим парсингом → полноценный плагин без TODO,
+    # знания по типовым ловушкам зашиты в шаблон (см. knowledge/lnreader.md).
+    if site.api_style == "html" and site.html:
+        import forge_knowledge
+        plugin_file = forge_knowledge.render_static_plugin(site, repo)
+        print(f"  шаблон: static_html → {plugin_file}")
+        return
+
     plugin_file = repo / "plugins" / "russian" / f"{site.site_id}.ts"
 
     cls = class_name(site)
@@ -1467,6 +1482,11 @@ def cmd_generate(args: list[str]) -> None:
     else:
         sys.exit(f"Неизвестный kind: {site.kind}")
 
+    if site.kind == "lnreader":
+        import forge_knowledge
+        for warning in forge_knowledge.lint_lnreader(site):
+            print(f"  ⚠ {warning}")
+
     register_extension(site)
     print(f"✔ Готово: {site.site_id}")
     print(f"  Дальше: заполните TODO по селекторам из {spec_path},")
@@ -1499,6 +1519,22 @@ def cmd_list(args: list[str]) -> None:
         print(f"{watch} {ext['kind']:8} {ext['id']:20} v{ext['version']}  {ext['base_url']}")
 
 
+def cmd_doctor(args: list[str]) -> None:
+    """Чек-лист перед пушем: forge.py doctor lnreader litnet"""
+    if not args:
+        sys.exit("Использование: forge.py doctor <mihon|aniyomi|lnreader> <site_id>")
+    kind, site_id = args[0], args[1]
+    import forge_knowledge
+
+    repo = REPOS[kind]
+    print(f"→ Проверка {kind}/{site_id} в {repo}")
+    failed = 0
+    for ok, label in forge_knowledge.doctor(repo, site_id):
+        print(("  ✔ " if ok else "  ✖ ") + label)
+        failed += 0 if ok else 1
+    print(f"{'✔ Всё готово' if not failed else f'✖ Проблем: {failed}'}")
+
+
 def cmd_watch(args: list[str]) -> None:
     """Сторож: проверка живости источников. Подробности в watchdog/watchdog.py."""
     subprocess.run([sys.executable, str(FORGE_ROOT / "watchdog" / "watchdog.py")] + args)
@@ -1510,6 +1546,7 @@ COMMANDS = {
     "bump": cmd_bump,
     "list": cmd_list,
     "watch": cmd_watch,
+    "doctor": cmd_doctor,
 }
 
 

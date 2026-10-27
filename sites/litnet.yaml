@@ -1,0 +1,62 @@
+# LNReader · Литнет. Проверено 2026-10-27 на живом сайте.
+id: litnet
+kind: lnreader
+name: Литнет
+base_url: https://litnet.com
+lang: ru
+api_style: html
+nsfw: false
+version: 1.4.0
+
+# UA мобильного приложения — единственный, кто отдаёт классическую вёрстку
+# с оглавлением и текстом главы. Браузерный UA получает Angular-страницу без глав.
+html:
+  ua: "Litnet/3.5.1 (Android 13; Xiaomi)"
+  list_url: "/ru/top/{genre}?page={page}"
+  list_latest_url: "/ru/top/latest-new?page={page}"
+  item: 'a[href*="/ru/book/"] img'
+  item_link: 'a[href*="/ru/book/"]'
+  title_attr: "alt"
+  title_regex: "«(.+?)»"
+  cover_attr: "src"
+  detail:
+    title: "h1.book-title"
+    author: ".bp-bookTag-heading a.author"
+    cover: ".book-cover img"
+    summary_from_ldjson: true
+    ongoing_text: "В процессе"
+    completed_text: "Полный текст"
+    genres_from_ldjson: true
+    rating: false          # ld+json даёт ratingValue=5 у всех книг — рейтинг не выводим
+  chapter: ".bp-chapterList a.collection-item"
+  chapter_name_strip: "span"
+  text: ".jsReaderText"
+  text_remove: "script, style, .ad, .ad-container"
+
+filters:
+  genre:
+    label: Жанр
+    default: all
+    options:
+      - [Все жанры, all]
+      - [Фэнтези, fentezi]
+      - [Фантастика, fantastika]
+      - [Любовные романы, lyubovnye-romany]
+      - [Детективы, detektivy]
+      - [Попаданцы, popadancy]
+      - [ЛитРПГ, litrpg]
+      - [Эротика, erotika]
+      - [Женская проза, jenskaya-proza]
+      - [Молодёжная проза, molodejnaya-proza]
+      - [Триллеры, trillery]
+      - [Короткий любовный роман, korotkiy-lyubovnyy-roman]
+
+selectors:
+  popular: ".bookCard-img"
+  search: ".bookCard-img"
+  details:
+    title: "h1.book-title"
+  chapters: ".bp-chapterList a.collection-item"
+  pages: ".jsReaderText"
+
+notes: "Требует UA приложения Litnet/* — иначе сайт отдаёт Angular-вёрстку без глав."

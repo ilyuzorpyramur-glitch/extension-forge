@@ -349,6 +349,48 @@
       "last_status": "verified-in-tadami",
       "target_repo": "mihon-ru-manga-repo",
       "module": "src/ru/yagamiproject"
+    },
+    {
+      "id": "litnet",
+      "kind": "lnreader",
+      "name": "Литнет",
+      "base_url": "https://litnet.com",
+      "version": "1.4.0",
+      "version_code": "1",
+      "nsfw": false,
+      "watch": true,
+      "selectors": {
+        "popular": ".bookCard-img",
+        "search": ".bookCard-img",
+        "details": {
+          "title": "h1.book-title"
+        },
+        "chapters": ".bp-chapterList a.collection-item",
+        "pages": ".jsReaderText"
+      },
+      "qualities": [],
+      "default_quality": ""
+    },
+    {
+      "id": "libcat",
+      "kind": "lnreader",
+      "name": "ЛибКат",
+      "base_url": "https://libcat.ru",
+      "version": "1.1.0",
+      "version_code": "1",
+      "nsfw": false,
+      "watch": true,
+      "selectors": {
+        "popular": ".tg-postbook",
+        "search": ".tg-postbook",
+        "details": {
+          "title": "h1"
+        },
+        "chapters": "#read",
+        "pages": "#read"
+      },
+      "qualities": [],
+      "default_quality": ""
     }
   ]
 }

@@ -1,0 +1,68 @@
+# LNReader · ЛибКат. Проверено 2026-10-27 на живом сайте.
+id: libcat
+kind: lnreader
+name: ЛибКат
+base_url: https://libcat.ru
+lang: ru
+api_style: html
+nsfw: false
+version: 1.1.0
+
+html:
+  ua_free: true            # UA не влияет на вёрстку — проверено 6 вариантами
+  list_url: "/knigi/{genre}/page/{page}/"     # страница 1 = /knigi/{genre}/
+  # Сортировки по дате нет (?sort=date / ?do=lastnews — тот же порядок, RSS нет),
+  # поэтому «Последние» приближаются порядком id книги: он растёт с добавлением.
+  latest_sort: id
+  list_first_page_bare: true
+  item: ".tg-postbook"
+  item_link: ".tg-booktitle a"
+  title_select: ".tg-booktitle a"
+  cover_select: "img"
+  cover_attr: "data-src"
+  detail:
+    title: "h1"
+    author_from_title: " - "   # h1 = «Автор - Название»
+    cover: 'a[itemprop="image"]'
+    cover_attr: "href"
+    genres: '[itemprop="itemListElement"] span[itemprop="name"]'
+    summary_absent: true     # аннотаций нет: .tg-description — SEO-вода, её отбрасываем
+    rating_text: "Рейтинг книги: ([\\d.,]+) / 5"
+    rating_text: "Рейтинг книги: ([\\d.,]+) / 5"
+  # Глав у сайта нет: книга = страницы по ~4.4k символов
+  chapter_mode: pages_range
+  pages_total: '#read'
+  pages_total_attr: "data-count"
+  pages_per_chapter: 5
+  page_url: "{dir}{id}-{page}-{slug}.html"
+  text: "#read"
+  text_remove: "script, style, ins, iframe, .navigation, #text, .ad"
+  summary_reject: "Здесь есть возможность читать онлайн|Ниже представлен текст книги"
+
+filters:
+  genre:
+    label: Жанр
+    default: fantastika-i-fentezi
+    options:
+      - [Фантастика и фэнтези, fantastika-i-fentezi]
+      - [Любовные романы, lyubovnye-romany]
+      - [Приключения, priklyucheniya]
+      - [Детективы и триллеры, detektivy-i-trillery]
+      - [Проза, proza]
+      - [Детская литература, detskaya-literatura]
+      - [Наука и образование, nauka-i-obrazovanie]
+      - [Документальные книги, dokumentalnye-knigi]
+      - [Домоводство, domovodstvo]
+      - [Религиозная литература, religioznaya-literatura]
+      - [Юмористические книги, yumoristicheskie-knigi]
+      - [Поэзия, poeziya]
+
+selectors:
+  popular: ".tg-postbook"
+  search: ".tg-postbook"
+  details:
+    title: "h1"
+  chapters: "#read"
+  pages: "#read"
+
+notes: "Глав нет — книга нарезана на страницы по ~4.4k символов; плагин группирует по 5."
