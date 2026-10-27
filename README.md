@@ -62,7 +62,6 @@ python3 forge.py generate sites/my_site.yaml
 | `forge.py bump <mihon\|aniyomi\|lnreader> <site_id>` | поднять версию расширения |
 | `forge.py list` | список расширений на попечении |
 | `forge.py watch` | прогнать сторож по живым источникам |
-| `forge.py doctor <kind> <site_id>` | чек-лист перед пушем (иконка, version, tsc) |
 
 ## 📋 Формат декларации
 
@@ -112,55 +111,10 @@ selectors:               # по ним сторож проверяет живо�
 
 Итог: расширение чинится само, без ручного вмешательства, в типовых случаях.
 
+## 📚 База знаний
 
-## 🧠 База знаний
-
-Опыт ручной разработки плагинов превращён в код и в документацию — чтобы не наступать
-на те же грабли при каждом новом сайте.
-
-| Файл | Что внутри |
-|---|---|
-| `knowledge/lnreader.md` | Litnet (вёрстка зависит от User-Agent, фиктивный рейтинг в `ld+json`), Libcat (страницы вместо глав, нет сортировки по дате), публикация в `plugins/v3.0.0`, иконки, чек-лист |
-| `sites/litnet.yaml`, `sites/libcat.yaml` | готовые декларации с проверенными селекторами и флагами |
-| `forge_knowledge.py` | шаблон `static_html` + предупреждения + `forge.py doctor` |
-
-Главные правила, зашитые в генератор:
-
-1. **UA решает вёрстку.** Litnet отдаёт Angular-страницу без глав любому браузерному UA;
-   классическая разметка — только с `Litnet/3.5.1 (Android …)`. Поле `html.ua`.
-2. **Рейтинг — только настоящий.** `ld+json` Litnet ставит `ratingValue: 5` всем книгам:
-   такой рейтинг не выводим (`detail.rating: false`), у Libcat берём дробный из текста.
-3. **«Последние» ≠ «Популярное».** Нужен `list_latest_url` или `latest_sort: id`, иначе
-   `showLatestNovels` игнорируется и вкладки совпадают.
-4. **Сайт без глав.** `chapter_mode: pages_range` + `pages_per_chapter` — страницы
-   группируются в главы, диапазон кодируется в path (`book::1-5`).
-5. **SEO-вода ≠ описание.** `summary_reject` отбрасывает «Здесь есть возможность читать онлайн…».
-6. **Bump версии обязателен.** Без него LNReader не увидит обновление; индекс плагинов —
-   `…/plugins/v3.0.0/.dist/plugins.min.json` (корневой путь отдаёт 404), CDN кэширует 5 минут.
-
-### Команда doctor
-
-```bash
-forge.py doctor lnreader litnet
-```
-
-Проверяет: файл плагина, `version`, `icon`, отсутствие `TODO`, иконку в
-`public/static/src/ru/<id>/`, запись в `scripts/make-icons.py`, `tsc` и напоминание
-про bump. Код возврата — число проблем.
-
-### Генерация по декларации
-
-```yaml
-api_style: html          # включает шаблон static_html (без TODO)
-html:
-  ua: "Litnet/3.5.1 (Android 13; Xiaomi)"
-  list_url: "/ru/top/{genre}?page={page}"
-  list_latest_url: "/ru/top/latest-new?page={page}"
-  ...
-```
-
-Целевой репозиторий можно переопределить переменной окружения
-`FORGE_REPO_LNREADER` (удобно для тестовой генерации в пустой каталог).
+Весь опыт разработки AnimeStock (Craftum-сайты, Supabase/PostgREST, стиль Kotlin под CI,
+маппинг длинных полос и альбомов) — в [KNOWLEDGE.md](KNOWLEDGE.md).
 
 ## 🗂 Структура
 
@@ -169,11 +123,7 @@ extension-forge/
 ├── forge.py               # CLI: generate / bump / list / watch
 ├── registry.json          # какие расширения на попечении (создаётся автоматически)
 ├── sites/                 # YAML-декларации сайтов
-│   ├── example.yaml
-│   ├── litnet.yaml        # LNReader · проверено на живом сайте
-│   └── libcat.yaml
-├── knowledge/             # накопленные знания (см. раздел «База знаний»)
-├── forge_knowledge.py     # шаблон static_html, предупреждения, doctor
+│   └── example.yaml
 ├── templates/             # шаблоны кода для mihon / aniyomi / lnreader
 ├── watchdog/
 │   └── watchdog.py        # ежемесячная проверка + самопочинка

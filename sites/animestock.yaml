@@ -3,7 +3,10 @@
 # данные отдаёт CMS API: /user-website-api/blog/rubrics/{id}/articles/
 # (limit/offset, tags, deleted=false, published=true).
 # Каждый пост = один выпуск манги: одна длинная полоса (long strip).
-# Поискового API нет — поиск делается в памяти по загруженному списку.
+# Поиска в CMS нет: без жанра — каталог Supabase anime_catalog (712 записей
+# с постерами) фильтрами PostgREST (or/and, url.ilike/title.ilike); с жанром —
+# фиды CMS с tags= (теги привязаны к рубрикам). Посты-полосы = выпуски.
+# Опыт разработки: KNOWLEDGE.md (Craftum, PostgREST, стиль CI).
 # Фильтры расширения: рубрика (Манга/Хентай/Косплей) + жанровые теги сайта.
 id: animestock
 kind: mihon
@@ -13,9 +16,9 @@ lang: ru
 theme: ""            # собственный API-класс, без multisrc-темы
 api_style: json_api
 nsfw: true
-version: 1.4.1
+version: 1.4.4
 source_id: 9205683393119254565
-ext_version_code: 1
+ext_version_code: 4
 
 api:
   base: "/user-website-api/blog"
@@ -34,7 +37,7 @@ api:
 
 selectors:
   popular: "GET /user-website-api/blog/rubrics/1634/articles/?limit=21&offset=0&deleted=false&published=true → массив {id,name,url,preview_url}"
-  search: "тот же эндпоинт (limit=500), поиск по названию в памяти"
+  search: "без жанра: Supabase /rest/v1/anime_catalog + or()/and() фильтры PostgREST; с жанром: фиды CMS с tags="
   details:
     title: "document.title"
     cover: "meta[property=og:image]"
