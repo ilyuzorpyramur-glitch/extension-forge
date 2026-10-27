@@ -1,0 +1,45 @@
+# AnimeStock — animestock.ru
+# Сайт на конструкторе Craftum. Каталог — клиентские списки статей,
+# данные отдаёт CMS API: /user-website-api/blog/rubrics/{id}/articles/
+# (limit/offset, tags, deleted=false, published=true).
+# Каждый пост = один выпуск манги: одна длинная полоса (long strip).
+# Поискового API нет — поиск делается в памяти по загруженному списку.
+# Фильтры расширения: рубрика (Манга/Хентай/Косплей) + жанровые теги сайта.
+id: animestock
+kind: mihon
+name: AnimeStock
+base_url: https://animestock.ru
+lang: ru
+theme: ""            # собственный API-класс, без multisrc-темы
+api_style: json_api
+nsfw: true
+version: 1.4.1
+source_id: 9205683393119254565
+ext_version_code: 1
+
+api:
+  base: "/user-website-api/blog"
+  catalog: "/rubrics/1634/articles/"          # рубрика «Манга»
+  rubrics:
+    - { id: 1634, name: "Манга" }
+    - { id: 16585, name: "Хентай" }
+    - { id: 6448, name: "Косплей" }
+  per_page: 20
+  tag_param: "tags"
+  tags_endpoint: "/tags/?rubric_id={rubric}"
+  sorts:
+    - { id: "published", label: "Новые" }
+  default_sort: "published"
+  latest_sort: "published"
+
+selectors:
+  popular: "GET /user-website-api/blog/rubrics/1634/articles/?limit=21&offset=0&deleted=false&published=true → массив {id,name,url,preview_url}"
+  search: "тот же эндпоинт (limit=500), поиск по названию в памяти"
+  details:
+    title: "document.title"
+    cover: "meta[property=og:image]"
+    description: "meta[property=og:description]"
+  chapters: "пост = одна глава-полоса"
+  pages: "img.cli-article__image — одна длинная полоса (long strip)"
+
+notes: "Конструктор Craftum. Теги привязаны к рубрикам: у «Манга» и «Хентай» свои id (см. Filters.kt). Пост = выпуск целиком одной картинкой-полосой (например 1362×57654)."

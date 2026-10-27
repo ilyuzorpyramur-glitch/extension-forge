@@ -29,6 +29,33 @@
       "selectors": {}
     },
     {
+      "id": "animestock",
+      "kind": "mihon",
+      "name": "AnimeStock",
+      "base_url": "https://animestock.ru",
+      "version": "1.4.1",
+      "version_code": "104001",
+      "nsfw": true,
+      "watch": true,
+      "last_status": "new",
+      "target_repo": "mihon-ru-manga-repo",
+      "module": "src/ru/animestock",
+      "declaration": "sites/animestock.yaml",
+      "selectors": {
+        "popular": "GET /user-website-api/blog/rubrics/1634/articles/?limit=21&offset=0&deleted=false&published=true → массив {id,name,url,preview_url}",
+        "search": "тот же эндпоинт (limit=500), поиск по названию в памяти — поискового API у CMS нет",
+        "details": {
+          "title": "document.title",
+          "cover": "meta[property=og:image]",
+          "description": "meta[property=og:description]"
+        },
+        "chapters": "пост = одна глава-полоса",
+        "pages": "img.cli-article__image — одна длинная полоса (long strip)"
+      },
+      "qualities": [],
+      "default_quality": ""
+    },
+    {
       "id": "astramanga",
       "kind": "mihon",
       "name": "AstraManga",
