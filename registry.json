@@ -29,6 +29,34 @@
       "selectors": {}
     },
     {
+      "id": "remanga",
+      "kind": "mihon",
+      "name": "Remanga",
+      "base_url": "https://remanga.org",
+      "version": "1.4.1",
+      "version_code": "104001",
+      "nsfw": false,
+      "watch": true,
+      "last_status": "new",
+      "target_repo": "mihon-ru-manga-repo",
+      "module": "src/ru/remanga",
+      "declaration": "sites/remanga.yaml",
+      "selectors": {
+        "popular": "GET api.remanga.org/api/search/catalog/?ordering=-rating&count=30&page=N&count_chapters_gte=1 → {content[], props.page/total_pages}",
+        "search": "GET /api/search/?query=&page= (по названию); каталог — те же фильтры ordering/genres/categories/types/status/age_limit",
+        "details": {
+          "title": "content.rus_name/en_name (isEng)",
+          "cover": "site + content.img.high",
+          "genres": "type + age_limit + genres + categories",
+          "branches": "content.branches[]"
+        },
+        "chapters": "GET /api/titles/chapters/?branch_id={max branch}&page&count=300; имена 'Tом. Глава X', is_paid → 💰",
+        "pages": "GET /api/titles/chapters/{id}/ → content.pages[{page,link,height}] (height>10), link без http → site+link"
+      },
+      "qualities": [],
+      "default_quality": ""
+    },
+    {
       "id": "animestock",
       "kind": "mihon",
       "name": "AnimeStock",

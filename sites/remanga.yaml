@@ -1,0 +1,38 @@
+# Re:Manga — remanga.org
+# Каталог и контент — JSON API на api.remanga.org (десктопный User-Agent обязателен,
+# иначе DDoS-Guard отдаёт 403). Обложки — пути /media/... на сайте (site + img.mid/high).
+# Опыт разработки: см. KNOWLEDGE.md.
+id: remanga
+kind: mihon
+name: Remanga
+base_url: https://remanga.org
+lang: ru
+theme: ""
+api_style: json_api
+nsfw: false
+version: 1.4.1
+source_id: 8983242087533137528
+ext_version_code: 1
+
+api:
+  base: "https://api.remanga.org/api"
+  catalog: "/search/catalog/"        # ordering=-rating / -chapter_date; count=30; page; count_chapters_gte=1
+  search: "/search/?query=&page="    # поиск по названию
+  filters_params:
+    ordering: ["id", "chapter_date", "rating", "votes", "views", "count_chapters", "random"]
+    genres: "genres / exclude_genres"
+    categories: "categories / exclude_categories"
+    types: "types / exclude_types"
+    status: "status"
+    age_limit: "age_limit"
+  details: "/titles/{dir}/"
+  chapters: "/titles/chapters/?branch_id={branch}&page&count=300"
+  pages: "/titles/chapters/{chapter_id}/"
+
+selectors:
+  popular: "{content: [{name, dir, img.mid/high, isEng, rus_name, en_name}], props: {page, total_pages}}"
+  details: "{content: {dir, img, type, status.id (0..5), age_limit (2=18+), genres[], categories[], branches[{id, count_chapters}], description (html)}}"
+  chapters: "{content: [{id, chapter ('34'|'34.5'), tome, name, upload_date 'yyyy-MM-ddTHH:mm:ss', publishers[], is_paid}]}"
+  pages: "{content: {pages: [{page, link, height}]}} — height>10, link без http → https://remanga.org + link"
+
+notes: "Бранча: брать ветку с max count_chapters. Платные главы помечать 💰. Кэшировать картинки img3/img5.reimg.org не нужно, но rate-limit 1-2 req/s."
