@@ -33,7 +33,7 @@
       "kind": "mihon",
       "name": "Remanga",
       "base_url": "https://remanga.org",
-      "version": "1.4.1",
+      "version": "1.4.2",
       "version_code": "104001",
       "nsfw": false,
       "watch": true,
