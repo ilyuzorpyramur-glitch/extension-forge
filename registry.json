@@ -34,7 +34,7 @@
       "name": "Remanga",
       "base_url": "https://remanga.org",
       "version": "1.4.2",
-      "version_code": "104001",
+      "version_code": "104002",
       "nsfw": false,
       "watch": true,
       "last_status": "new",
