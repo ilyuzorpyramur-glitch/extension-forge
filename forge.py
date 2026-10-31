@@ -13,6 +13,7 @@
   forge list                   — список известных сайтов
   forge watch                  — прогнать сторож по зарегистрированным расширениям
   forge audit [аргументы]      — прогнать стенд (Frida) по расширениям
+  forge pipe <url|файл>        — конвейер: сайт → расширение → сборка → стенд → правки
 """
 
 from __future__ import annotations
@@ -408,7 +409,7 @@ def render_mihon_api_v2(site: SiteSpec) -> None:
     _write_gradle(module, site, version_code, source_id)
     code = mihon_api_v2.render(site, pkg, cls, host, version_code, source_id, genres)
     target = pkg_dir / f"{cls}.kt"
-    target.write_text(code, encoding="utf-8")
+    target.write_text(clean_kotlin(code), encoding="utf-8")
     format_kotlin(target)
     generate_icons(site)
 
@@ -516,7 +517,7 @@ abstract class {cls} :
     }}
 }}
 """
-    (pkg_dir / f"{cls}.kt").write_text(main_kt, encoding="utf-8")
+    (pkg_dir / f"{cls}.kt").write_text(clean_kotlin(main_kt), encoding="utf-8")
 
     # Иконки
     generate_icons(site)
@@ -1222,7 +1223,7 @@ keiyoushi {{
     dto_kt = _KT_SERIALIZERS
     for key, value in replacements.items():
         dto_kt = dto_kt.replace(key, value)
-    (pkg_dir / "Dto.kt").write_text(dto_kt, encoding="utf-8")
+    (pkg_dir / "Dto.kt").write_text(clean_kotlin(dto_kt), encoding="utf-8")
 
     source_kt = _KT_SOURCE
     genres = fetch_genres(site)
@@ -1247,7 +1248,7 @@ keiyoushi {{
     source_replacements.update(_genre_placeholders(genres))
     for key, value in source_replacements.items():
         source_kt = source_kt.replace(key, value)
-    (pkg_dir / f"{cls}.kt").write_text(source_kt, encoding="utf-8")
+    (pkg_dir / f"{cls}.kt").write_text(clean_kotlin(source_kt), encoding="utf-8")
 
     generate_icons(site)
 
@@ -1378,7 +1379,7 @@ class {cls} : ConfigurableAnimeSource, AnimeHttpSource() {{
     }}
 }}
 """
-    (pkg_dir / f"{cls}.kt").write_text(main_kt, encoding="utf-8")
+    (pkg_dir / f"{cls}.kt").write_text(clean_kotlin(main_kt), encoding="utf-8")
 
     generate_icons(site)
 
@@ -1711,6 +1712,22 @@ def cmd_audit(args: list[str]) -> None:
     runpy.run_path(script, run_name="__main__")
 
 
+def cmd_pipe(args: list[str]) -> None:
+    """Конвейер: тип сайта → модуль → сборка → стенд → исправления → знания."""
+    import conveyor
+
+    conveyor.main(args)
+
+
+def cmd_classify(args: list[str]) -> None:
+    """Только классификация: тип сайта и NSFW."""
+    import conveyor
+    import json as _json
+
+    for url in args:
+        print(_json.dumps(conveyor.classify(url), ensure_ascii=False))
+
+
 COMMANDS = {
     "add": cmd_add,
     "generate": cmd_generate,
@@ -1720,6 +1737,8 @@ COMMANDS = {
     "doctor": cmd_doctor,
     "audit": cmd_audit,
     "stand": cmd_audit,
+    "pipe": cmd_pipe,
+    "classify": cmd_classify,
 }
 
 

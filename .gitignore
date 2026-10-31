@@ -1,2 +1,5 @@
 __pycache__/
 *.pyc
+knowledge/ai_cache/
+reports/
+.gemini_key

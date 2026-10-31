@@ -27,11 +27,35 @@ PAGINATION_TOTAL = ("total_pages", "pages", "last_page", "totalPages")
 PAGINATION_CURRENT = ("current_page", "page", "currentPage")
 
 
+def decode_html(raw: bytes, content_type: str = "") -> str:
+    """Кодировка сайта: из заголовка, из meta, иначе utf-8 -> cp1251.
+
+    Без этого половина русских сайтов (cp1251) приходит кракозябрами, и
+    классификация с разведкой видят мусор вместо ключевых слов.
+    """
+    charset_re = re.compile(r"charset=([\w-]+)", re.I)
+    candidates = []
+    match = charset_re.search(content_type or "")
+    if match:
+        candidates.append(match.group(1).strip("'\""))
+    head = raw[:4096].decode("latin-1")
+    match = charset_re.search(head)
+    if match:
+        candidates.append(match.group(1).strip("'\""))
+    candidates += ["utf-8", "cp1251"]
+    for charset in candidates:
+        try:
+            return raw.decode(charset)
+        except (LookupError, UnicodeDecodeError):
+            continue
+    return raw.decode("utf-8", "replace")
+
+
 def _get(url: str, headers: dict | None = None, timeout: int = 25) -> tuple[int, str]:
     request = urllib.request.Request(url, headers={"User-Agent": UA, **(headers or {})})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.status, response.read().decode("utf-8", "replace")
+            return response.status, decode_html(response.read(), response.headers.get("Content-Type", ""))
     except urllib.error.HTTPError as error:
         return error.code, ""
     except Exception:
@@ -99,10 +123,13 @@ def detect_nsfw(html: str, url: str) -> bool:
     text = html.lower()
     strong = sum(text.count(word) for word in NSFW_STRONG)
     medium = sum(text.count(word) for word in NSFW_MEDIUM)
-    # «18+», «этти» и «эротика» встречаются и на обычных сайтах (жанр в
-    # каталоге), поэтому смотрим на плотность: у взрослых сайтов явные
-    # слова повторяются десятками раз.
-    return strong >= 3 or medium >= 8
+    # «18+», «этти» и «эротика» есть и на обычных сайтах (жанр в фильтрах,
+    # дисклеймер), поэтому смотрим плотность, а не количество: у взрослых
+    # сайтов явные слова идут на каждой карточке.
+    thousands = max(1.0, len(text) / 1000.0)
+    if strong >= 8 and strong / thousands >= 1.0:
+        return True
+    return medium >= 20 and medium / thousands >= 2.0
 
 
 def detect_content_rating(html: str, url: str) -> str:
