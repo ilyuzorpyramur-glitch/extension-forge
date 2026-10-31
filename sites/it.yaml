@@ -1,0 +1,40 @@
+# HentaiCity.it.com — hentaicity.it.com (разведка https://hentaicity.it.com)
+id: it
+kind: mihon
+name: "HentaiCity.it.com"
+base_url: https://hentaicity.it.com
+lang: ru
+api_style: html
+nsfw: true
+rating: nsfw
+
+html:
+  rate: 3
+  list:
+    path: "/"            # TODO: страница каталога/популярного, если не "/"
+    latest_path: "/"      # TODO: страница последних обновлений
+    search_path: ""       # TODO: например "/search?q={query}"
+    items: "a[href*=\"/video/\"]"
+    link: "a[href*=\"/video/\"]"
+    cover: "img"
+    has_next: ""          # TODO: селектор кнопки "далее", если список постраничный
+  details:
+    title: { selector: "h1" }   # TODO: проверить на странице тайтла
+    cover: ".cover img, .poster img"
+    description: { selector: ".description" }
+    genres: { selector: ".genres" }
+  chapters:
+    items: ".chapter-list a"   # TODO: селектор строки главы
+    link: "a"
+  pages:
+    images: ".reader img"      # TODO: селектор картинок читалки
+
+# найдено карточек: 112
+#   - '03:27 0' -> https://hentaicity.it.com/video/711/chains-of-captivity-2-hot-servant-get-fucked-by-lesbian-milf-use-vibrator-part-1
+#   - 'Chains of Captivity 2 - Hot servant get fucked by lesbian milf use vibrator [Part 1]' -> https://hentaicity.it.com/video/711/chains-of-captivity-2-hot-servant-get-fucked-by-lesbian-milf-use-vibrator-part-1
+#   - 'HD 00:46 2' -> https://hentaicity.it.com/video/40376/quality-time-with-lily-lovebraids-sapsolar-hentai-poppy-playtime
+
+# TODO: это каркас, не готовое расширение. smartparse нашёл только карточки
+# списка (см. образцы выше) — селекторы деталей/глав/страниц надо
+# проверить на реальной странице тайтла и поправить руками, затем:
+#   python3 forge.py generate sites/it.yaml

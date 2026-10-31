@@ -1,0 +1,40 @@
+# Хентай смотреть онлайн — anifap.com (разведка https://anifap.com)
+id: anifap
+kind: aniyomi
+name: "Хентай смотреть онлайн"
+base_url: https://anifap.com
+lang: ru
+api_style: html
+nsfw: false
+rating: nsfw
+
+html:
+  rate: 3
+  list:
+    path: "/"            # TODO: страница каталога/популярного, если не "/"
+    latest_path: "/"      # TODO: страница последних обновлений
+    search_path: ""       # TODO: например "/search?q={query}"
+    items: "a[href*=\"/tags/\"]"
+    link: "a[href*=\"/tags/\"]"
+    cover: "img"
+    has_next: ""          # TODO: селектор кнопки "далее", если список постраничный
+  details:
+    title: { selector: "h1" }   # TODO: проверить на странице тайтла
+    cover: ".cover img, .poster img"
+    description: { selector: ".description" }
+    genres: { selector: ".genres" }
+  chapters:
+    items: ".chapter-list a"   # TODO: селектор строки главы
+    link: "a"
+  pages:
+    images: ".reader img"      # TODO: селектор картинок читалки
+
+# найдено карточек: 41
+#   - 'Найдено публикаций: 32' -> https://anifap.com/tags/%23ada%20wong/
+#   - 'Найдено публикаций: 30' -> https://anifap.com/tags/%23aerith%20gainsborough/
+#   - 'Найдено публикаций: 25' -> https://anifap.com/tags/%23cloud%20strife/
+
+# TODO: это каркас, не готовое расширение. smartparse нашёл только карточки
+# списка (см. образцы выше) — селекторы деталей/глав/страниц надо
+# проверить на реальной странице тайтла и поправить руками, затем:
+#   python3 forge.py generate sites/anifap.yaml

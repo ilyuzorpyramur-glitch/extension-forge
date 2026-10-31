@@ -1,0 +1,40 @@
+# It's time for Oppai! 4K Hentai — oppai.stream (разведка https://oppai.stream)
+id: oppai
+kind: mihon
+name: "It's time for Oppai! 4K Hentai"
+base_url: https://oppai.stream
+lang: ru
+api_style: html
+nsfw: false
+rating: nsfw
+
+html:
+  rate: 3
+  list:
+    path: "/"            # TODO: страница каталога/популярного, если не "/"
+    latest_path: "/"      # TODO: страница последних обновлений
+    search_path: ""       # TODO: например "/search?q={query}"
+    items: "a[href*=\"/watch/\"]"
+    link: "a[href*=\"/watch/\"]"
+    cover: "img"
+    has_next: ""          # TODO: селектор кнопки "далее", если список постраничный
+  details:
+    title: { selector: "h1" }   # TODO: проверить на странице тайтла
+    cover: ".cover img, .poster img"
+    description: { selector: ".description" }
+    genres: { selector: ".genres" }
+  chapters:
+    items: ".chapter-list a"   # TODO: селектор строки главы
+    link: "a"
+  pages:
+    images: ".reader img"      # TODO: селектор картинок читалки
+
+# найдено карточек: 18
+#   - '15:16 Phantom Alchemia: Sylvia no Dokidoki Sakusei Toshi Keikaku 1 47K 136' -> https://oppai.stream/watch/Phantom%20Alchemia%3A%20Sylvia%20no%20Dokidoki%20Sakusei%20Toshi%20Keikaku-1/from/recent-home
+#   - '20:17 Hebi to Kumo 1 50K 175' -> https://oppai.stream/watch/Hebi%20to%20Kumo-1/from/recent-home
+#   - '17:52 Anal Mania Otaku to Ananie Daisuki na Ojou-sama: Kiseki no Matching 1 53K 186' -> https://oppai.stream/watch/Anal%20Mania%20Otaku%20to%20Ananie%20Daisuki%20na%20Ojou-sama%3A%20Kiseki%20no%20Matching-1/from/recent-home
+
+# TODO: это каркас, не готовое расширение. smartparse нашёл только карточки
+# списка (см. образцы выше) — селекторы деталей/глав/страниц надо
+# проверить на реальной странице тайтла и поправить руками, затем:
+#   python3 forge.py generate sites/oppai.yaml

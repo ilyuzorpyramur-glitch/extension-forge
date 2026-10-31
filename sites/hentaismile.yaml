@@ -1,0 +1,40 @@
+# HentaiSmile® — www.hentaismile.com (разведка https://www.hentaismile.com)
+id: hentaismile
+kind: aniyomi
+name: "HentaiSmile®"
+base_url: https://www.hentaismile.com
+lang: ru
+api_style: html
+nsfw: true
+rating: nsfw
+
+html:
+  rate: 3
+  list:
+    path: "/"            # TODO: страница каталога/популярного, если не "/"
+    latest_path: "/"      # TODO: страница последних обновлений
+    search_path: ""       # TODO: например "/search?q={query}"
+    items: "a[href*=\"/videos/\"]"
+    link: "a[href*=\"/videos/\"]"
+    cover: "img"
+    has_next: ""          # TODO: селектор кнопки "далее", если список постраничный
+  details:
+    title: { selector: "h1" }   # TODO: проверить на странице тайтла
+    cover: ".cover img, .poster img"
+    description: { selector: ".description" }
+    genres: { selector: ".genres" }
+  chapters:
+    items: ".chapter-list a"   # TODO: селектор строки главы
+    link: "a"
+  pages:
+    images: ".reader img"      # TODO: селектор картинок читалки
+
+# найдено карточек: 45
+#   - 'Young Horny Boy Craves MILF Action! Uncensored Hentai Porn [Subtitled]' -> https://www.hentaismile.com/videos/3886/young-horny-boy-craves-milf-action-uncensored-hentai-porn-subtitled/
+#   - 'You Can Do as You Please 1 - Busty hentai mom fucks her daughters husband' -> https://www.hentaismile.com/videos/2346/you-can-do-as-you-please-1-busty-hentai-mom-fucks-her-daughters-husband/
+#   - 'Even So I Love My Wife 2 ep2 - Cheating hentai housewife gangbanged in catgirl outfit' -> https://www.hentaismile.com/videos/1724/even-so-i-love-my-wife-2-ep2-cheating-hentai-housewife-gangbanged-in-catgirl-outfit/
+
+# TODO: это каркас, не готовое расширение. smartparse нашёл только карточки
+# списка (см. образцы выше) — селекторы деталей/глав/страниц надо
+# проверить на реальной странице тайтла и поправить руками, затем:
+#   python3 forge.py generate sites/hentaismile.yaml

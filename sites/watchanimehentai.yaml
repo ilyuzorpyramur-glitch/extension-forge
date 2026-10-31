@@ -1,0 +1,40 @@
+# Watch Anime Hentai — www.watchanimehentai.com (разведка https://www.watchanimehentai.com)
+id: watchanimehentai
+kind: aniyomi
+name: "Watch Anime Hentai"
+base_url: https://www.watchanimehentai.com
+lang: ru
+api_style: html
+nsfw: true
+rating: nsfw
+
+html:
+  rate: 3
+  list:
+    path: "/"            # TODO: страница каталога/популярного, если не "/"
+    latest_path: "/"      # TODO: страница последних обновлений
+    search_path: ""       # TODO: например "/search?q={query}"
+    items: "a[href*=\"/episodes/\"]"
+    link: "a[href*=\"/episodes/\"]"
+    cover: "img"
+    has_next: ""          # TODO: селектор кнопки "далее", если список постраничный
+  details:
+    title: { selector: "h1" }   # TODO: проверить на странице тайтла
+    cover: ".cover img, .poster img"
+    description: { selector: ".description" }
+    genres: { selector: ".genres" }
+  chapters:
+    items: ".chapter-list a"   # TODO: селектор строки главы
+    link: "a"
+  pages:
+    images: ".reader img"      # TODO: селектор картинок читалки
+
+# найдено карточек: 24
+#   - 'Watch hentai Hitozukiai Ga Nigate Na Miboujin No Yukionna-San To Noroi No Yubiwa Episode 4' -> https://www.watchanimehentai.com/episodes/hitozukiai-ga-nigate-na-miboujin-no-yukionna-san-to-noroi-no-yubiwa-episode-4/
+#   - 'Watch hentai Oushun Jogakuen no Danyuu Episode 2' -> https://www.watchanimehentai.com/episodes/oushun-jogakuen-no-danyuu-episode-2/
+#   - 'Watch hentai Netorareta Bakunyuu Tsuma-tachi 2 Episode 2' -> https://www.watchanimehentai.com/episodes/netorareta-bakunyuu-tsuma-tachi-2-episode-2/
+
+# TODO: это каркас, не готовое расширение. smartparse нашёл только карточки
+# списка (см. образцы выше) — селекторы деталей/глав/страниц надо
+# проверить на реальной странице тайтла и поправить руками, затем:
+#   python3 forge.py generate sites/watchanimehentai.yaml

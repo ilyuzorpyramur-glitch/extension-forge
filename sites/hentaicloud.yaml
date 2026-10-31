@@ -1,0 +1,40 @@
+# HD Hentai Video Streaming — www.hentaicloud.com (разведка https://www.hentaicloud.com)
+id: hentaicloud
+kind: mihon
+name: "HD Hentai Video Streaming"
+base_url: https://www.hentaicloud.com
+lang: ru
+api_style: html
+nsfw: true
+rating: nsfw
+
+html:
+  rate: 3
+  list:
+    path: "/"            # TODO: страница каталога/популярного, если не "/"
+    latest_path: "/"      # TODO: страница последних обновлений
+    search_path: ""       # TODO: например "/search?q={query}"
+    items: "a[href*=\"/video/\"]"
+    link: "a[href*=\"/video/\"]"
+    cover: "img"
+    has_next: ""          # TODO: селектор кнопки "далее", если список постраничный
+  details:
+    title: { selector: "h1" }   # TODO: проверить на странице тайтла
+    cover: ".cover img, .poster img"
+    description: { selector: ".description" }
+    genres: { selector: ".genres" }
+  chapters:
+    items: ".chapter-list a"   # TODO: селектор строки главы
+    link: "a"
+  pages:
+    images: ".reader img"      # TODO: селектор картинок читалки
+
+# найдено карточек: 26
+#   - 'Eroriman 2' -> https://www.hentaicloud.com/video/3774/eroriman-2/episode1/english
+#   - 'Watch Now' -> https://www.hentaicloud.com/video/3774/eroriman-2/episode1/english
+#   - 'Boku ni Sefure ga Dekita Riyuu' -> https://www.hentaicloud.com/video/3743/boku-ni-sefure-ga-dekita-riyuu/episode1/english
+
+# TODO: это каркас, не готовое расширение. smartparse нашёл только карточки
+# списка (см. образцы выше) — селекторы деталей/глав/страниц надо
+# проверить на реальной странице тайтла и поправить руками, затем:
+#   python3 forge.py generate sites/hentaicloud.yaml

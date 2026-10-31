@@ -1,0 +1,40 @@
+# Free Porn Sex Videos — www.redtube.com (разведка https://www.redtube.com)
+id: redtube
+kind: aniyomi
+name: "Free Porn Sex Videos"
+base_url: https://www.redtube.com
+lang: ru
+api_style: html
+nsfw: false
+rating: nsfw
+
+html:
+  rate: 3
+  list:
+    path: "/"            # TODO: страница каталога/популярного, если не "/"
+    latest_path: "/"      # TODO: страница последних обновлений
+    search_path: ""       # TODO: например "/search?q={query}"
+    items: "a[href*=\"/redtube/\"]"
+    link: "a[href*=\"/redtube/\"]"
+    cover: "img"
+    has_next: ""          # TODO: селектор кнопки "далее", если список постраничный
+  details:
+    title: { selector: "h1" }   # TODO: проверить на странице тайтла
+    cover: ".cover img, .poster img"
+    description: { selector: ".description" }
+    genres: { selector: ".genres" }
+  chapters:
+    items: ".chapter-list a"   # TODO: селектор строки главы
+    link: "a"
+  pages:
+    images: ".reader img"      # TODO: селектор картинок читалки
+
+# найдено карточек: 91
+#   - 'Trans' -> https://www.redtube.com/redtube/transgender
+#   - 'Anal' -> https://www.redtube.com/redtube/anal
+#   - 'Mature' -> https://www.redtube.com/redtube/mature
+
+# TODO: это каркас, не готовое расширение. smartparse нашёл только карточки
+# списка (см. образцы выше) — селекторы деталей/глав/страниц надо
+# проверить на реальной странице тайтла и поправить руками, затем:
+#   python3 forge.py generate sites/redtube.yaml

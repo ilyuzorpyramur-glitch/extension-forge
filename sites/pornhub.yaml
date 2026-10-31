@@ -1,0 +1,40 @@
+# Www — www.pornhub.com (разведка https://www.pornhub.com)
+id: pornhub
+kind: aniyomi
+name: "Www"
+base_url: https://www.pornhub.com
+lang: ru
+api_style: html
+nsfw: true
+rating: nsfw
+
+html:
+  rate: 3
+  list:
+    path: "/"            # TODO: страница каталога/популярного, если не "/"
+    latest_path: "/"      # TODO: страница последних обновлений
+    search_path: ""       # TODO: например "/search?q={query}"
+    items: "a[href*=\"/view_video.php\"]"
+    link: "a[href*=\"/view_video.php\"]"
+    cover: "img"
+    has_next: ""          # TODO: селектор кнопки "далее", если список постраничный
+  details:
+    title: { selector: "h1" }   # TODO: проверить на странице тайтла
+    cover: ".cover img, .poster img"
+    description: { selector: ".description" }
+    genres: { selector: ".genres" }
+  chapters:
+    items: ".chapter-list a"   # TODO: селектор строки главы
+    link: "a"
+  pages:
+    images: ".reader img"      # TODO: селектор картинок читалки
+
+# найдено карточек: 126
+#   - '' -> https://www.pornhub.com/view_video.php?viewkey=6aa19385e0021
+#   - 'I thought it was my wife, but it was her friend visiting us.' -> https://www.pornhub.com/view_video.php?viewkey=6aa19385e0021
+#   - '' -> https://www.pornhub.com/view_video.php?viewkey=6a9a11605760f
+
+# TODO: это каркас, не готовое расширение. smartparse нашёл только карточки
+# списка (см. образцы выше) — селекторы деталей/глав/страниц надо
+# проверить на реальной странице тайтла и поправить руками, затем:
+#   python3 forge.py generate sites/pornhub.yaml

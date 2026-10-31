@@ -1,0 +1,40 @@
+# Hentaverse — hentaverse.com (разведка https://hentaverse.com)
+id: hentaverse
+kind: aniyomi
+name: "Hentaverse"
+base_url: https://hentaverse.com
+lang: ru
+api_style: html
+nsfw: true
+rating: nsfw
+
+html:
+  rate: 3
+  list:
+    path: "/"            # TODO: страница каталога/популярного, если не "/"
+    latest_path: "/"      # TODO: страница последних обновлений
+    search_path: ""       # TODO: например "/search?q={query}"
+    items: "a[href*=\"/hentai/\"]"
+    link: "a[href*=\"/hentai/\"]"
+    cover: "img"
+    has_next: ""          # TODO: селектор кнопки "далее", если список постраничный
+  details:
+    title: { selector: "h1" }   # TODO: проверить на странице тайтла
+    cover: ".cover img, .poster img"
+    description: { selector: ".description" }
+    genres: { selector: ".genres" }
+  chapters:
+    items: ".chapter-list a"   # TODO: селектор строки главы
+    link: "a"
+  pages:
+    images: ".reader img"      # TODO: селектор картинок читалки
+
+# найдено карточек: 15
+#   - '2 Episodes 2016 OVA A Size Classmate UNKNOWN' -> https://hentaverse.com/hentai/a-size-classmate
+#   - '2 Episodes 2019 OVA Shoujo Kyouiku RE FINISHED_AIRING' -> https://hentaverse.com/hentai/shoujo-kyouiku-re
+#   - '1 Episode 2017 OVA Ichinen Buri no The Animation FINISHED_AIRING' -> https://hentaverse.com/hentai/ichinen-buri-no-the-animation
+
+# TODO: это каркас, не готовое расширение. smartparse нашёл только карточки
+# списка (см. образцы выше) — селекторы деталей/глав/страниц надо
+# проверить на реальной странице тайтла и поправить руками, затем:
+#   python3 forge.py generate sites/hentaverse.yaml

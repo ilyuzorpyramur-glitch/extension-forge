@@ -1,0 +1,21 @@
+# Hd Hentai — hdhentai.tv (разведка https://hdhentai.tv)
+id: hdhentai
+kind: aniyomi
+name: "Hd Hentai"
+base_url: https://hdhentai.tv
+lang: ru
+api_style: json_api_v2
+nsfw: true
+rating: nsfw
+
+api:
+  base: ""
+  list:
+    path: ""
+    items: ""
+    page_param: page
+    size_param: "per_page"
+    size: 20
+    query_param: "q"
+
+# TODO, не найдено автоматически: api не обнаружен — html-режим, список тайтлов (попробуйте указать api.base и api.list.path вручную)

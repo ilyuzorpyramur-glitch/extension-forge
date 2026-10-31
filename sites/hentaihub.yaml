@@ -1,0 +1,21 @@
+# Подтвердите возраст — v4.hentai-hub.net (разведка http://v4.hentai-hub.net)
+id: hentaihub
+kind: mihon
+name: "Подтвердите возраст"
+base_url: http://v4.hentai-hub.net
+lang: ru
+api_style: json_api_v2
+nsfw: true
+rating: nsfw
+
+api:
+  base: ""
+  list:
+    path: ""
+    items: ""
+    page_param: page
+    size_param: "per_page"
+    size: 20
+    query_param: "q"
+
+# TODO, не найдено автоматически: разведка прервана по времени/лимиту проб, список тайтлов (попробуйте указать api.base и api.list.path вручную)

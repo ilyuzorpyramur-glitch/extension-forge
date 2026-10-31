@@ -279,17 +279,55 @@ def build(site, module_dir: Path, repo: Path) -> tuple[bool, str]:
         detail=samples_data["detail"] or "карточка не открылась",
         detail_url=samples_data["detail_url"],
     )
-    code = gemini.ask(prompt, max_tokens=6000, temperature=0.15)
-    code = code.strip()
-    if code.startswith("```"):
-        code = code.split("```")[1]
-        code = code.split("\n", 1)[1] if code.lower().startswith("kotlin") else code
-    if "class " not in code or "override" not in code:
-        return False, "модель вернула не код"
+    code = _extract(gemini.ask(prompt, max_tokens=6000, temperature=0.15))
+    if not _looks_like_source(code):
+        # Один повтор: модель часто отвечает прозой, если её об этом не толкнуть.
+        retry = prompt + (
+            "\n\nВАЖНО: ответ должен содержать ТОЛЬКО код Kotlin, без пояснений,"
+            " без markdown, начиная с package и заканчивая закрывающей скобкой класса."
+        )
+        code = _extract(gemini.ask(retry, max_tokens=6000, temperature=0.1))
+    if not _looks_like_source(code):
+        return False, "модель вернула не код (две попытки)"
     if "TODO(" in code:
-        return False, "в ответе остались TODO"
+        # Модель любит оставлять заглушки: просим дописать полностью.
+        again = prompt + (
+            "\n\nВАЖНО: не оставляй TODO(...), заглушек и пустых методов."
+            " Реализуй каждый метод полностью по образцам разметки выше."
+            " Ответ — только код Kotlin."
+        )
+        code = _extract(gemini.ask(again, max_tokens=6000, temperature=0.1))
+        if not _looks_like_source(code) or "TODO(" in code:
+            return False, "в ответе остались TODO (две попытки)"
     if code.count("{") != code.count("}"):
         return False, "несбалансированные скобки"
 
     target.write_text(code.rstrip() + "\n", encoding="utf-8")
     return True, f"AI-парсер написан ({len(code)} символов)"
+
+
+FENCE = re.compile(r"```[a-zA-Z]*\s*\n(.*?)```", re.S)
+
+
+def _extract(answer: str) -> str:
+    """Код из ответа: блок в ```…```, иначе часть от package/import до конца."""
+    if not answer:
+        return ""
+    blocks = FENCE.findall(answer)
+    if blocks:
+        longest = max(blocks, key=len)
+        return longest.strip()
+    text = answer.strip()
+    start = re.search(r"^\s*(package|import)\s+", text, re.M)
+    if start:
+        text = text[start.start():]
+    return text.strip()
+
+
+def _looks_like_source(code: str) -> bool:
+    """Минимальная проверка: это Kotlin-класс источника, а не проза."""
+    if not code or "class " not in code or "override" not in code:
+        return False
+    if code.count("{") != code.count("}"):
+        return False
+    return "fun " in code

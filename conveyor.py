@@ -558,6 +558,12 @@ def process_site(url: str, args) -> dict:
         if args.no_stand:
             result["status"] = "собран"
             return result
+        if args.no_build:
+            # Без сборки в индексе модуля нет: стенд увидел бы 0/0 и это
+            # выглядело бы как провал. Честно помечаем, что проверки не было.
+            result["status"] = "код готов (без сборки, стенд не запускался)"
+            result["notes"].append("нужна сборка, чтобы прогнать стенд")
+            return result
         if result["kind"] != "aniyomi":
             # Стенд работает через приложение с аниме-расширениями.
             result["status"] = f"собран ({result['kind']}: стенд не применим)"

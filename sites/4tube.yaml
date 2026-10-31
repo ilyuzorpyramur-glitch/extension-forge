@@ -1,0 +1,40 @@
+# Www — www.4tube.com (разведка https://www.4tube.com)
+id: 4tube
+kind: mihon
+name: "Www"
+base_url: https://www.4tube.com
+lang: ru
+api_style: html
+nsfw: false
+rating: nsfw
+
+html:
+  rate: 3
+  list:
+    path: "/"            # TODO: страница каталога/популярного, если не "/"
+    latest_path: "/"      # TODO: страница последних обновлений
+    search_path: ""       # TODO: например "/search?q={query}"
+    items: "a[href*=\"/category/\"]"
+    link: "a[href*=\"/category/\"]"
+    cover: "img"
+    has_next: ""          # TODO: селектор кнопки "далее", если список постраничный
+  details:
+    title: { selector: "h1" }   # TODO: проверить на странице тайтла
+    cover: ".cover img, .poster img"
+    description: { selector: ".description" }
+    genres: { selector: ".genres" }
+  chapters:
+    items: ".chapter-list a"   # TODO: селектор строки главы
+    link: "a"
+  pages:
+    images: ".reader img"      # TODO: селектор картинок читалки
+
+# найдено карточек: 256
+#   - 'Beauty 15.7M' -> https://www.4tube.com/category/beauty
+#   - 'Taboo Fantasy 3.72M' -> https://www.4tube.com/category/taboo-fantasy
+#   - 'POV (Point Of View) 10M' -> https://www.4tube.com/category/pov-point-of-view
+
+# TODO: это каркас, не готовое расширение. smartparse нашёл только карточки
+# списка (см. образцы выше) — селекторы деталей/глав/страниц надо
+# проверить на реальной странице тайтла и поправить руками, затем:
+#   python3 forge.py generate sites/4tube.yaml

@@ -1,0 +1,40 @@
+# hstream.moe — hstream.moe (разведка https://hstream.moe)
+id: hstream
+kind: mihon
+name: "hstream.moe"
+base_url: https://hstream.moe
+lang: ru
+api_style: html
+nsfw: true
+rating: nsfw
+
+html:
+  rate: 3
+  list:
+    path: "/"            # TODO: страница каталога/популярного, если не "/"
+    latest_path: "/"      # TODO: страница последних обновлений
+    search_path: ""       # TODO: например "/search?q={query}"
+    items: "a[href*=\"/hentai/\"]"
+    link: "a[href*=\"/hentai/\"]"
+    cover: "img"
+    has_next: ""          # TODO: селектор кнопки "далее", если список постраничный
+  details:
+    title: { selector: "h1" }   # TODO: проверить на странице тайтла
+    cover: ".cover img, .poster img"
+    description: { selector: ".description" }
+    genres: { selector: ".genres" }
+  chapters:
+    items: ".chapter-list a"   # TODO: селектор строки главы
+    link: "a"
+  pages:
+    images: ".reader img"      # TODO: селектор картинок читалки
+
+# найдено карточек: 135
+#   - '4k | FHD 48fps Oushun Jogakuen no Danyuu - 2 44k 158 5' -> https://hstream.moe/hentai/oushun-jogakuen-no-danyuu-2
+#   - '4k | FHD 48fps Oushun Jogakuen no Danyuu - 1 56k 181 8' -> https://hstream.moe/hentai/oushun-jogakuen-no-danyuu-1
+#   - '4k | FHD 48fps Netorareta Bakunyuu Tsuma-tachi 2 - 1 51k 144 6' -> https://hstream.moe/hentai/netorareta-bakunyuu-tsuma-tachi-s2-1
+
+# TODO: это каркас, не готовое расширение. smartparse нашёл только карточки
+# списка (см. образцы выше) — селекторы деталей/глав/страниц надо
+# проверить на реальной странице тайтла и поправить руками, затем:
+#   python3 forge.py generate sites/hstream.yaml

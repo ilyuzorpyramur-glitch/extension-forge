@@ -27,9 +27,10 @@ CACHE_DIR = FORGE_ROOT / "knowledge" / "ai_cache"
 ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 # Порядок важен: первый рабочий и используется. 3.8-flash отвечает 503 под
-# нагрузкой, 2.5-flash закрыт для новых ключей.
+# нагрузкой, 2.5-flash закрыт для новых ключей, flash-lite возвращает
+# «Request contains an invalid argument» — в цепочке ему места нет.
 MODELS = [m.strip() for m in os.environ.get(
-    "GEMINI_MODELS", "gemini-3-flash-preview,gemini-flash-lite-latest,gemini-3.8-flash"
+    "GEMINI_MODELS", "gemini-3-flash-preview,gemini-3.8-flash"
 ).split(",") if m.strip()]
 MAX_CALLS = int(os.environ.get("GEMINI_MAX_CALLS", "40"))
 

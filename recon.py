@@ -171,6 +171,7 @@ NOVEL_WORDS = ("ранобэ", "новелла", "ранобе", "novel", "light
 NSFW_HOSTS = ("hentai", "henta", "adult", "porn", "xxx", "nude", "erotic", "18plus")
 NSFW_STRONG = ("хентай", "hentai", "порно", "porn", "xxx", "тентакли")
 NSFW_MEDIUM = ("18+", "этти", "ecchi", "adult", "nsfw", "для взрослых", "эротика")
+VIDEO_MARKERS = (".m3u8", ".mp4", "<video", "player", "jwplayer", "flowplayer", "/watch/")
 
 
 def detect_kind(html: str, url: str) -> str:
@@ -189,6 +190,11 @@ def detect_kind(html: str, url: str) -> str:
     if novel_hits >= 3 and novel_hits > anime_hits:
         return "lnreader"
     if anime_hits >= 4 and anime_hits > novel_hits * 2:
+        return "aniyomi"
+    # Плеер в разметке — это видео-источник. У манги m3u8/mp4 не бывает,
+    # поэтому такой сайт не должен уезжать в mihon только из-за слова "chapter".
+    video_hits = sum(1 for marker in VIDEO_MARKERS if marker in text)
+    if video_hits >= 2:
         return "aniyomi"
     return "mihon"
 

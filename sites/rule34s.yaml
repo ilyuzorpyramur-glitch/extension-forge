@@ -1,0 +1,40 @@
+# rule34s — rule34s.com (разведка https://rule34s.com)
+id: rule34s
+kind: aniyomi
+name: "rule34s"
+base_url: https://rule34s.com
+lang: ru
+api_style: html
+nsfw: false
+rating: nsfw
+
+html:
+  rate: 3
+  list:
+    path: "/"            # TODO: страница каталога/популярного, если не "/"
+    latest_path: "/"      # TODO: страница последних обновлений
+    search_path: ""       # TODO: например "/search?q={query}"
+    items: "a[href*=\"/watch/\"]"
+    link: "a[href*=\"/watch/\"]"
+    cover: "img"
+    has_next: ""          # TODO: селектор кнопки "далее", если список постраничный
+  details:
+    title: { selector: "h1" }   # TODO: проверить на странице тайтла
+    cover: ".cover img, .poster img"
+    description: { selector: ".description" }
+    genres: { selector: ".genres" }
+  chapters:
+    items: ".chapter-list a"   # TODO: селектор строки главы
+    link: "a"
+  pages:
+    images: ".reader img"      # TODO: селектор картинок читалки
+
+# найдено карточек: 65
+#   - '2:36 Hori and Miyamura bed sex scene 2d ago HD' -> https://rule34s.com/watch/hori-and-miyamura-bed-sex-scene-r34s-can
+#   - '5:07 [Ginhaha] Asuna x Kirito 4d ago HD' -> https://rule34s.com/watch/ginhaha-asuna-x-kirito-r34s-can
+#   - '3:15 Ronova 3 | Floraxis 7d ago HD' -> https://rule34s.com/watch/ronova-3-floraxis-r34s-can
+
+# TODO: это каркас, не готовое расширение. smartparse нашёл только карточки
+# списка (см. образцы выше) — селекторы деталей/глав/страниц надо
+# проверить на реальной странице тайтла и поправить руками, затем:
+#   python3 forge.py generate sites/rule34s.yaml

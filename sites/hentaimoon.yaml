@@ -1,0 +1,40 @@
+# Watch Free Hentai — hentai-moon.com (разведка https://hentai-moon.com/watch-d4)
+id: hentaimoon
+kind: aniyomi
+name: "Watch Free Hentai"
+base_url: https://hentai-moon.com/watch-d4
+lang: ru
+api_style: html
+nsfw: true
+rating: nsfw
+
+html:
+  rate: 3
+  list:
+    path: "/"            # TODO: страница каталога/популярного, если не "/"
+    latest_path: "/"      # TODO: страница последних обновлений
+    search_path: ""       # TODO: например "/search?q={query}"
+    items: "a[href*=\"/videos/\"]"
+    link: "a[href*=\"/videos/\"]"
+    cover: "img"
+    has_next: ""          # TODO: селектор кнопки "далее", если список постраничный
+  details:
+    title: { selector: "h1" }   # TODO: проверить на странице тайтла
+    cover: ".cover img, .poster img"
+    description: { selector: ".description" }
+    genres: { selector: ".genres" }
+  chapters:
+    items: ".chapter-list a"   # TODO: селектор строки главы
+    link: "a"
+  pages:
+    images: ".reader img"      # TODO: селектор картинок читалки
+
+# найдено карточек: 31
+#   - 'Netorareta Bakunyuu Tsuma-tachi 2 - Ep.1' -> https://hentai-moon.com/videos/7808/netorareta-bakunyuu-tsuma-tachi-2-ep-1/
+#   - 'Pure x Holic: Junketsu Otome to Konin Kankei!? - Ep.1' -> https://hentai-moon.com/videos/7805/pure-x-holic-junketsu-otome-to-konin-kankei-ep-1/
+#   - 'Kokuhaku... - Ep. 4' -> https://hentai-moon.com/videos/7803/kokuhaku-ep-4/
+
+# TODO: это каркас, не готовое расширение. smartparse нашёл только карточки
+# списка (см. образцы выше) — селекторы деталей/глав/страниц надо
+# проверить на реальной странице тайтла и поправить руками, затем:
+#   python3 forge.py generate sites/hentaimoon.yaml

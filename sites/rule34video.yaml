@@ -1,0 +1,40 @@
+# Rule34video — rule34video.com (разведка https://rule34video.com)
+id: rule34video
+kind: aniyomi
+name: "Rule34video"
+base_url: https://rule34video.com
+lang: ru
+api_style: html
+nsfw: false
+rating: nsfw
+
+html:
+  rate: 3
+  list:
+    path: "/"            # TODO: страница каталога/популярного, если не "/"
+    latest_path: "/"      # TODO: страница последних обновлений
+    search_path: ""       # TODO: например "/search?q={query}"
+    items: "a[href*=\"/video/\"]"
+    link: "a[href*=\"/video/\"]"
+    cover: "img"
+    has_next: ""          # TODO: селектор кнопки "далее", если список постраничный
+  details:
+    title: { selector: "h1" }   # TODO: проверить на странице тайтла
+    cover: ".cover img, .poster img"
+    description: { selector: ".description" }
+    genres: { selector: ".genres" }
+  chapters:
+    items: ".chapter-list a"   # TODO: селектор строки главы
+    link: "a"
+  pages:
+    images: ".reader img"      # TODO: селектор картинок читалки
+
+# найдено карточек: 23
+#   - "FGGB 99 wednesday' halloween special last episode fixed" -> https://rule34video.com/video/4705006/fggb-99-wednesday-halloween-special-last-episode-fixed/
+#   - 'Fortnite Madison Beer sloppy blowjob POV' -> https://rule34video.com/video/4705054/fortnite-madison-beer-sloppy-blowjob-pov/
+#   - 'Scarlet Witch Marvel Rivals [Z1G3D]' -> https://rule34video.com/video/4705027/scarlet-witch-marvel-rivals-z1g3d/
+
+# TODO: это каркас, не готовое расширение. smartparse нашёл только карточки
+# списка (см. образцы выше) — селекторы деталей/глав/страниц надо
+# проверить на реальной странице тайтла и поправить руками, затем:
+#   python3 forge.py generate sites/rule34video.yaml

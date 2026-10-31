@@ -1,0 +1,21 @@
+# HentaiAstra — hentaiastra.com (разведка https://hentaiastra.com)
+id: hentaiastra
+kind: aniyomi
+name: "HentaiAstra"
+base_url: https://hentaiastra.com
+lang: ru
+api_style: json_api_v2
+nsfw: true
+rating: nsfw
+
+api:
+  base: ""
+  list:
+    path: ""
+    items: ""
+    page_param: page
+    size_param: "per_page"
+    size: 20
+    query_param: "q"
+
+# TODO, не найдено автоматически: разведка прервана по времени/лимиту проб, список тайтлов (попробуйте указать api.base и api.list.path вручную)

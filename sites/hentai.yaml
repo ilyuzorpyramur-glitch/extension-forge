@@ -1,0 +1,40 @@
+# Free hentai porn world — hentai.yoga (разведка https://hentai.yoga)
+id: hentai
+kind: aniyomi
+name: "Free hentai porn world"
+base_url: https://hentai.yoga
+lang: ru
+api_style: html
+nsfw: true
+rating: nsfw
+
+html:
+  rate: 3
+  list:
+    path: "/"            # TODO: страница каталога/популярного, если не "/"
+    latest_path: "/"      # TODO: страница последних обновлений
+    search_path: ""       # TODO: например "/search?q={query}"
+    items: "a[href*=\"/watch/\"]"
+    link: "a[href*=\"/watch/\"]"
+    cover: "img"
+    has_next: ""          # TODO: селектор кнопки "далее", если список постраничный
+  details:
+    title: { selector: "h1" }   # TODO: проверить на странице тайтла
+    cover: ".cover img, .poster img"
+    description: { selector: ".description" }
+    genres: { selector: ".genres" }
+  chapters:
+    items: ".chapter-list a"   # TODO: селектор строки главы
+    link: "a"
+  pages:
+    images: ".reader img"      # TODO: селектор картинок читалки
+
+# найдено карточек: 60
+#   - 'Femboy for BBC - hentai porn' -> https://hentai.yoga/watch/femboy-for-bbc
+#   - 'Watch Femboy for BBC' -> https://hentai.yoga/watch/femboy-for-bbc
+#   - 'THE BACKSTORY - hentai porn' -> https://hentai.yoga/watch/the-backstory
+
+# TODO: это каркас, не готовое расширение. smartparse нашёл только карточки
+# списка (см. образцы выше) — селекторы деталей/глав/страниц надо
+# проверить на реальной странице тайтла и поправить руками, затем:
+#   python3 forge.py generate sites/hentai.yaml

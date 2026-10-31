@@ -1,0 +1,40 @@
+# Hentai City — www.hentaicity.com (разведка https://www.hentaicity.com)
+id: hentaicity
+kind: mihon
+name: "Hentai City"
+base_url: https://www.hentaicity.com
+lang: ru
+api_style: html
+nsfw: true
+rating: nsfw
+
+html:
+  rate: 3
+  list:
+    path: "/"            # TODO: страница каталога/популярного, если не "/"
+    latest_path: "/"      # TODO: страница последних обновлений
+    search_path: ""       # TODO: например "/search?q={query}"
+    items: "a[href*=\"/click/\"]"
+    link: "a[href*=\"/click/\"]"
+    cover: "img"
+    has_next: ""          # TODO: селектор кнопки "далее", если список постраничный
+  details:
+    title: { selector: "h1" }   # TODO: проверить на странице тайтла
+    cover: ".cover img, .poster img"
+    description: { selector: ".description" }
+    genres: { selector: ".genres" }
+  chapters:
+    items: ".chapter-list a"   # TODO: селектор строки главы
+    link: "a"
+  pages:
+    images: ".reader img"      # TODO: селектор картинок читалки
+
+# найдено карточек: 178
+#   - 'HD 06:50' -> https://www.hentaicity.com/click/1-1/video/now-that-i-can-control-reality-with-a-mouse-cursor-i-m-gonna-click-away-on-the-girls-4-vdxeq7NnHiX.html
+#   - "Now That I Can Control Reality with a Mouse Cursor, I'm Gonna Click Away on the Girls! 4" -> https://www.hentaicity.com/click/1-1/video/now-that-i-can-control-reality-with-a-mouse-cursor-i-m-gonna-click-away-on-the-girls-4-vdxeq7NnHiX.html
+#   - 'HD 06:56' -> https://www.hentaicity.com/click/1-2/video/the-lonely-snow-widow-and-the-cursed-ring-4-mature-hentai-pussy-wraps-tightly-around-cock-d93hn4V9ywH.html
+
+# TODO: это каркас, не готовое расширение. smartparse нашёл только карточки
+# списка (см. образцы выше) — селекторы деталей/глав/страниц надо
+# проверить на реальной странице тайтла и поправить руками, затем:
+#   python3 forge.py generate sites/hentaicity.yaml

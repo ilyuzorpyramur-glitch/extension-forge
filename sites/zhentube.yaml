@@ -1,0 +1,40 @@
+# Zhentube.com — zhentube.com (разведка https://zhentube.com)
+id: zhentube
+kind: mihon
+name: "Zhentube.com"
+base_url: https://zhentube.com
+lang: ru
+api_style: html
+nsfw: true
+rating: nsfw
+
+html:
+  rate: 3
+  list:
+    path: "/"            # TODO: страница каталога/популярного, если не "/"
+    latest_path: "/"      # TODO: страница последних обновлений
+    search_path: ""       # TODO: например "/search?q={query}"
+    items: "a[href*=\"/\"]"
+    link: "a[href*=\"/\"]"
+    cover: "img"
+    has_next: ""          # TODO: селектор кнопки "далее", если список постраничный
+  details:
+    title: { selector: "h1" }   # TODO: проверить на странице тайтла
+    cover: ".cover img, .poster img"
+    description: { selector: ".description" }
+    genres: { selector: ".genres" }
+  chapters:
+    items: ".chapter-list a"   # TODO: селектор строки главы
+    link: "a"
+  pages:
+    images: ".reader img"      # TODO: селектор картинок читалки
+
+# найдено карточек: 27
+#   - 'Zhentube.com' -> https://zhentube.com/
+#   - 'AI Sex Chat' -> https://crushon.ai/?mist=1&#038;utm_source=zhentube&#038;utm_medium=menulink&#038;utm_campaign=ai-sex-chat
+#   - 'ThePornDude' -> https://theporndude.com/
+
+# TODO: это каркас, не готовое расширение. smartparse нашёл только карточки
+# списка (см. образцы выше) — селекторы деталей/глав/страниц надо
+# проверить на реальной странице тайтла и поправить руками, затем:
+#   python3 forge.py generate sites/zhentube.yaml

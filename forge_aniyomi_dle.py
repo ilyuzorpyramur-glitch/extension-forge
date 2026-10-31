@@ -88,11 +88,23 @@ class @@CLASS@@ :
 
     override fun latestUpdatesParse(response: Response): AnimesPage = parseList(response)
 
+    override fun getFilterList() = eu.kanade.tachiyomi.animesource.model.AnimeFilterList(SectionsFilter())
+
     override fun searchAnimeRequest(page: Int, query: String, filters: eu.kanade.tachiyomi.animesource.model.AnimeFilterList): Request {
+        val state = filters.filterIsInstance<SectionsFilter>().firstOrNull()?.state ?: 0
+        val path = SECTIONS.getOrNull(state - 1)?.second ?: CATALOG_PATH
+        if (query.isBlank()) return GET(pageUrl(path, page), headers)
         val encoded = java.net.URLEncoder.encode(query, "UTF-8")
         val url = "$baseUrl" + SEARCH_PATH.replace("{query}", encoded)
         return GET(url, headers)
     }
+
+    /** Раздел каталога. Select абстрактный, поэтому подкласс, а не экземпляр. */
+    private class SectionsFilter :
+        eu.kanade.tachiyomi.animesource.model.AnimeFilter.Select<String>(
+            "Раздел",
+            SECTIONS.map { it.first }.toTypedArray(),
+        )
 
     override fun searchAnimeParse(response: Response): AnimesPage = parseList(response)
 
@@ -297,6 +309,16 @@ class @@CLASS@@ :
         .set("Origin", "https://kodikplayer.com")
         .build()
 
+    /** Origin обязан совпадать с хостом плеера: иначе 403 и пустая страница. */
+    private fun headersFor(url: String): Headers {
+        val origin = runCatching { java.net.URI(url).let { "${it.scheme}://${it.host}" } }.getOrNull()
+        return headers.newBuilder()
+            .set("User-Agent", USER_AGENT)
+            .set("Referer", "$baseUrl/")
+            .apply { if (origin != null) set("Origin", origin) }
+            .build()
+    }
+
     private fun attrsOf(tag: String): Map<String, String> = Regex("""([a-z-]+)="([^"]*)"""").findAll(tag)
         .associate { it.groupValues[1] to it.groupValues[2] }
 
@@ -322,22 +344,50 @@ class @@CLASS@@ :
      *  иначе в url попадает «,[SD (480p)]https://...» и видео не играет.
      */
     private fun directVideos(player: String): List<Video> = runCatching {
-        val page = client.newCall(GET(player, playerHeaders())).execute().use { it.bodyString() }
-        val decoded = ATOB_REGEX.find(page)?.groupValues?.get(1)?.let(::decodePlaylist).orEmpty()
-
-        val labeled = LABELED_URL.findAll(page).map { match ->
-            Video(match.groupValues[2], match.groupValues[1].trim(), player, headers = playerHeaders())
-        }.toList()
-
-        val plain = PLAIN_URL.findAll(page).map { match ->
-            Video(match.value, "Видео", player, headers = playerHeaders())
-        }.toList()
-
-        Log.e("Amedia", "direct links=" + (decoded.size + labeled.size + plain.size))
-        (decoded + labeled + plain).distinctBy { it.videoUrl }
+        val page = client.newCall(GET(player, headersFor(player))).execute().use { it.bodyString() }
+        var found = mediaOf(page, player)
+        if (found.isEmpty()) {
+            // Плеер-обёртка: внутри ещё один iframe (openni, alloha и подобные).
+            val nested = IFRAME_REGEX.find(page)?.groupValues?.get(1)
+            if (nested != null) {
+                val next = absoluteUrl(nested)
+                val inner = client.newCall(GET(next, headersFor(next))).execute().use { it.bodyString() }
+                found = mediaOf(inner, next)
+            }
+        }
+        Log.e("Amedia", "direct links=" + found.size)
+        found
     }.getOrElse {
         Log.e("Amedia", "direct error", it)
         emptyList()
+    }
+
+    /** Все медиа-ссылки страницы: base64-плейлист, метки качества, JSON-поля. */
+    private fun mediaOf(page: String, referer: String): List<Video> {
+        val decoded = ATOB_REGEX.find(page)?.groupValues?.get(1)?.let(::decodePlaylist).orEmpty()
+
+        val labeled = LABELED_URL.findAll(page).map { match ->
+            Video(match.groupValues[2], match.groupValues[1].trim(), referer, headers = headersFor(referer))
+        }.toList()
+
+        // playerjs кладёт ВСЕ качества одной строкой: file":"[Mobile (320p)]url,[SD (480p)]url"
+        val fromJson = JSON_FILE_VALUE.findAll(page).flatMap { field ->
+            val text = field.groupValues[1].replace("""\/""", "/")
+            val pairs = LABELED_URL.findAll(text).map { match ->
+                Video(match.groupValues[2], match.groupValues[1].trim(), referer, headers = headersFor(referer))
+            }.toList()
+            pairs.ifEmpty {
+                PLAIN_URL.findAll(text).map { match ->
+                    Video(match.value, "Видео", referer, headers = headersFor(referer))
+                }.toList()
+            }
+        }.toList()
+
+        val plain = PLAIN_URL.findAll(page).map { match ->
+            Video(match.value, "Видео", referer, headers = headersFor(referer))
+        }.toList()
+
+        return (decoded + labeled + fromJson + plain).distinctBy { it.videoUrl }
     }
 
     /** intrdb и подобные прячут список качеств в base64: «[480p]url,[720p]url». */
@@ -371,6 +421,15 @@ class @@CLASS@@ :
 
         private const val CATALOG_PATH = "@@CATALOG@@"
         private const val LATEST_PATH = "@@LATEST@@"
+
+        private val SECTIONS = listOf(
+@@SECTIONS@@
+        )
+
+        private val GENRES = listOf(
+@@GENRES@@
+        )
+
         private const val SEARCH_PATH = "@@SEARCH@@"
         private const val PAGE_SUFFIX = "@@PAGE_SUFFIX@@"
         private const val PAGE_MARKER = "@@PAGE_MARKER@@"
@@ -384,8 +443,16 @@ class @@CLASS@@ :
         private const val RELAY_URL = "@@RELAY@@"
         private const val MAX_SLOTS = 4
         private const val PLAYER_MODE = "@@PLAYER_MODE@@"
+
         // Плеер лежит либо в <iframe src>, либо в data-iframe у кнопки серии.
         // «[HD (720p)]https://host/video/720/1.mp4» — метка и адрес.
+        private val JSON_FILE_VALUE = Regex("""file"\s*:\s*"([^"]+)"""")
+
+        private val JSON_MEDIA_URL = Regex(
+            """(?:file|src|url)\s*[:=]\s*["']([^"']+?\.(?:m3u8|mp4)[^"']*)""",
+            RegexOption.IGNORE_CASE,
+        )
+
         private val LABELED_URL = Regex(
             """\[([^\]\[]{2,24})\]\s*(https?://[^"'\s,\]]+?\.(?:m3u8|mp4))""",
             RegexOption.IGNORE_CASE,
@@ -439,6 +506,62 @@ DEFAULTS = {
     "player_mode": "relay",
 }
 
+
+
+def _filter_lists(site, cfg) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """Разделы и жанры сайта: пары «подпись → путь» из живой разметки."""
+    import re as _re
+
+    import recon
+
+    base = site.base_url.rstrip("/")
+    catalog = str(cfg.get("catalog") or "/")
+    status, html = recon.fetch_html(base + catalog)
+
+    sections: list[tuple[str, str]] = []
+    genres: list[tuple[str, str]] = []
+    if status == 200 and html:
+        section_re = _re.compile(
+            r'<a[^>]+href="(' + _re.escape(catalog.rstrip("/")) + r'/[a-z0-9\-_]+/)"[^>]*>(.{0,60}?)</a>',
+            _re.S | _re.I,
+        )
+        for href, text in section_re.findall(html):
+            name = _re.sub(r"<[^>]+>", "", text).strip()
+            if len(name) < 2 or "page" in href:
+                continue
+            if (name, href) not in sections:
+                sections.append((name, href))
+
+        selector = str(cfg.get("genre_sel") or "")
+        prefix_match = _re.search(r"href\*=['\"]([^'\"]+)['\"]", selector)
+        if prefix_match:
+            prefix = prefix_match.group(1)
+            genre_re = _re.compile(
+                r'<a[^>]+href="([^"]*' + _re.escape(prefix) + r'[^"]*)"[^>]*>(.{0,40}?)</a>',
+                _re.S | _re.I,
+            )
+            for href, text in genre_re.findall(html):
+                name = _re.sub(r"<[^>]+>", "", text).strip()
+                if len(name) < 2:
+                    continue
+                path = href if href.startswith("/") else _re.sub(r"^https?://[^/]+", "", href)
+                if (name, path) not in genres:
+                    genres.append((name, path))
+
+    return sections[:24], genres[:24]
+
+
+def _kotlin_pairs(items: list[tuple[str, str]]) -> str:
+    # 12 пробелов: объявление на 8, продолжение аргументов +4 (ktlint).
+    pad = " " * 12
+    if not items:
+        return pad + '"Все" to "",'
+    rows = []
+    for name, path in items:
+        safe_name = name.replace('"', '\\"')[:40]
+        safe_path = path.replace('"', '\\"')
+        rows.append(f'{pad}"{safe_name}" to "{safe_path}",')
+    return "\n".join(rows)
 
 def _display_name(raw: str, site_id: str) -> str:
     base = str(raw or "").split(".")[0].strip()
@@ -540,6 +663,11 @@ def render(site, repo: Path) -> None:
         "@@RELAY@@": str(cfg["relay"]),
         "@@PLAYER_MODE@@": str(cfg["player_mode"]),
     }
+    sections, genres = _filter_lists(site, cfg)
+    replacements["@@SECTIONS@@"] = _kotlin_pairs(sections)
+    replacements["@@GENRES@@"] = _kotlin_pairs(genres)
+    # Пустой список жанров — это мёртвый выпадающий список: не показываем его.
+    replacements["@@FILTERS_BODY@@"] = "SECTIONS_FILTER, GENRES_FILTER" if genres else "SECTIONS_FILTER"
     for key, value in replacements.items():
         code = code.replace(key, value)
 
