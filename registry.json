@@ -531,7 +531,7 @@
       "name": "AniMaunt",
       "base_url": "https://animaunt.org",
       "version": "1.0.0",
-      "version_code": "1",
+      "version_code": "2",
       "nsfw": false,
       "watch": true,
       "selectors": {},

@@ -109,8 +109,12 @@ def parse_errors(log: str) -> list[dict]:
         message = message.strip()
         if not message or message.startswith("warning:"):
             continue
+        if re.search(r"(^|\s)w: ", line):
+            continue
         soft = re.search(r"should be|exceeds maximum|Unexpected |expected ", message)
-        if "error" not in line.lower() and "violation" not in message.lower() and not soft:
+        # kotlinc пишет "e: file:///...kt:131:5 'sort' overrides nothing."
+        kotlinc = re.search(r"(^|\s)e: ", line)
+        if "error" not in line.lower() and "violation" not in message.lower() and not soft and not kotlinc:
             continue
         found.append({"file": path, "line": int(line_no), "message": message[:300]})
     # одинаковые сообщения по одному файлу не дублируем
@@ -147,6 +151,23 @@ def fix_mechanical(module_dir: Path, errors: list[dict]) -> list[str]:
 
     for item in errors:
         message = item["message"]
+
+        # "'sort' overrides nothing" — метода нет в базовом классе. Строку
+        # убираем: сборка падает именно на ней, а стенд покажет, нужен ли метод.
+        if "overrides nothing" in message:
+            target = module_dir / Path(item["file"]).name
+            if not target.exists():
+                matches = list(module_dir.rglob(Path(item["file"]).name))
+                target = matches[0] if matches else target
+            if target.exists():
+                lines = target.read_text(encoding="utf-8").splitlines()
+                index = item["line"] - 1
+                if 0 <= index < len(lines) and "override" in lines[index]:
+                    del lines[index]
+                    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                    done.append(f"{target.name}:{item['line']} убран лишний override")
+            continue
+
         indent = re.search(r"Unexpected indentation \((\d+)\) \(should be (\d+)\)", message)
         if not indent:
             continue
@@ -163,77 +184,160 @@ def fix_mechanical(module_dir: Path, errors: list[dict]) -> list[str]:
     return done
 
 
+def spotless_lite(module_dir: Path, max_line: int = 140) -> list[str]:
+    """Приводит код к требованиям spotless до пуша.
+
+    Логи spotless перемешаны с выводом Gradle, поэтому надёжнее не разбирать
+    их, а сразу не давать повода: лишние импорты, хвостовые пробелы, длинные
+    строки, лишние пустые строки.
+    """
+    changed: list[str] = []
+    for file_path in sorted(module_dir.rglob("*.kt")):
+        try:
+            text = file_path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        original = text
+
+        text = text.replace("\t", "    ")
+        lines = [line.rstrip() for line in text.splitlines()]
+
+        # 1. Неиспользуемые импорты: простое имя больше нигде не встречается.
+        kept: list[str] = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("import ") and not stripped.endswith("*"):
+                simple = stripped.split(".")[-1].strip()
+                body = "\n".join(other for other in lines if other is not line)
+                if simple and not re.search(rf"\b{re.escape(simple)}\b", body):
+                    continue
+            kept.append(line)
+        lines = kept
+
+        # 2. Пустые строки: не больше одной подряд.
+        compact: list[str] = []
+        for line in lines:
+            if not line and compact and not compact[-1]:
+                continue
+            compact.append(line)
+        lines = compact
+
+        # 3. Длинные строки — режем по пробелу с продолжением на 4 пробела,
+        #    но только там, где это безопасно (без строковых литералов).
+        result: list[str] = []
+        for line in lines:
+            if len(line) <= max_line or '"' in line or line.lstrip().startswith(("*", "//", "import ")):
+                result.append(line)
+                continue
+            indent = len(line) - len(line.lstrip())
+            cut = line.rfind(" ", indent + 40, max_line)
+            if cut <= indent:
+                result.append(line)
+                continue
+            result.append(line[:cut].rstrip())
+            result.append(" " * (indent + 4) + line[cut:].strip())
+        lines = result
+
+        text = "\n".join(lines).rstrip() + "\n"
+        if text != original:
+            file_path.write_text(text, encoding="utf-8")
+            changed.append(file_path.name)
+    return changed
+
+
 SPOTLESS_MARK = "The following files had format violations:"
+HUNK_RE = re.compile(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
 
 def apply_spotless_diff(log: str, module_dir: Path) -> list[str]:
-    """Применяет дифф, который печатает spotless.
+    """Применяет дифф spotless по номерам строк.
 
-    Это самый частый отказ сборки: лишний импорт, отступ, длина строки.
-    spotless сам показывает нужные правки — берём их как есть, без модели.
+    Gradle печатает дифф вперемешку со своим прогрессом, поэтому искать
+    совпадение блоков бесполезно. Зато номера строк в заголовке хунка точные —
+    по ним и правим, от последнего хунка к первому, чтобы не сбить нумерацию.
     """
     if SPOTLESS_MARK not in log:
         return []
 
     lines = log.splitlines()
     start = next(index for index, line in enumerate(lines) if SPOTLESS_MARK in line)
-    fixed: list[str] = []
+
+    hunks: list[tuple[Path, int, int, list[str], list[str]]] = []
     current: Path | None = None
-    hunk_old: list[str] = []
-    hunk_new: list[str] = []
+    old_no = old_count = 0
+    old_block: list[str] = []
+    new_block: list[str] = []
 
     def flush() -> None:
-        nonlocal hunk_old, hunk_new
-        if current is None or not hunk_old:
-            hunk_old, hunk_new = [], []
-            return
-        try:
-            text = current.read_text(encoding="utf-8")
-        except OSError:
-            hunk_old, hunk_new = [], []
-            return
-        old_block = "\n".join(hunk_old)
-        new_block = "\n".join(hunk_new)
-        if old_block and old_block in text:
-            current.write_text(text.replace(old_block, new_block, 1), encoding="utf-8")
-            fixed.append(f"{current.name}: формат по spotless")
-        hunk_old, hunk_new = [], []
+        nonlocal old_block, new_block
+        if current is not None and old_block:
+            hunks.append((current, old_no, old_count, list(old_block), list(new_block)))
+        old_block, new_block = [], []
 
     for raw in lines[start + 1:]:
         line = raw.replace("\u00b7", " ")
-        # Формат лога GitHub: "job<TAB>step<TAB>2026-10-31T13:20:12.123Z текст".
         if "\t" in line:
             line = line.rsplit("\t", 1)[-1]
         line = re.sub(r"^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s?", "", line)
-        if line.strip().startswith("BUILD ") or line.startswith("##["):
+
+        stripped = line.strip()
+        if line.startswith("##[") or stripped.startswith("BUILD "):
             break
-        if line.startswith("      ") and line.strip().endswith(".kt"):
+        if stripped.endswith(".kt") and line.startswith("      "):
             flush()
-            name = line.strip()
-            current = module_dir / Path(name).name
-            if not current.exists():
+            name = stripped
+            found = module_dir / Path(name).name
+            if not found.exists():
                 matches = list(module_dir.rglob(Path(name).name))
-                current = matches[0] if matches else None
+                found = matches[0] if matches else module_dir / Path(name).name
+            current = found if found.exists() else None
             continue
-        if line.strip().startswith("@@"):
+
+        hunk = HUNK_RE.search(line)
+        if hunk:
             flush()
+            old_no = int(hunk.group(1))
+            old_count = int(hunk.group(2) or 1)
             continue
+
         if current is None:
             continue
-        # spotless печатает дифф с отступом: маркер стоит на 10-й колонке.
+        # Строка диффа: маркер на 10-й колонке, перед ним только пробелы.
         marker_at = line.find("@@")
         marker_at = 10 if marker_at < 0 or marker_at > 12 else marker_at
         if len(line) <= marker_at or line[:marker_at].strip():
             continue
         marker, body = line[marker_at], line[marker_at + 1:]
         if marker == "-":
-            hunk_old.append(body)
+            old_block.append(body)
         elif marker == "+":
-            hunk_new.append(body)
+            new_block.append(body)
         elif marker == " ":
-            hunk_old.append(body)
-            hunk_new.append(body)
+            old_block.append(body)
+            new_block.append(body)
     flush()
+
+    fixed: list[str] = []
+    # От последнего хунка к первому: правки не сдвигают номера выше.
+    for file_path, line_no, _count, old_lines, new_lines in reversed(hunks):
+        try:
+            text = file_path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        content = text.splitlines()
+        start_index = line_no - 1
+        if start_index < 0 or start_index > len(content):
+            continue
+        if old_lines and content[start_index:start_index + len(old_lines)] != old_lines:
+            # Номера разошлись (файл уже правили) — тогда ищем блок по тексту.
+            joined = "\n".join(old_lines)
+            if joined and joined in text:
+                file_path.write_text(text.replace(joined, "\n".join(new_lines), 1), encoding="utf-8")
+                fixed.append(f"{file_path.name}: формат по spotless")
+            continue
+        content[start_index:start_index + len(old_lines)] = new_lines
+        file_path.write_text("\n".join(content) + "\n", encoding="utf-8")
+        fixed.append(f"{file_path.name}: формат по spotless")
     return fixed
 
 

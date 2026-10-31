@@ -22,12 +22,8 @@ MAX_SAMPLE = 6000
 
 
 def fetch(url: str) -> str:
-    try:
-        request = urllib.request.Request(url, headers={"User-Agent": UA, "Accept-Language": "ru,en;q=0.8"})
-        with urllib.request.urlopen(request, timeout=30) as response:
-            return recon.decode_html(response.read(), response.headers.get("Content-Type", ""))
-    except Exception:
-        return ""
+    status, body = recon.fetch_html(url)
+    return body if status == 200 else ""
 
 
 def trim(html: str, limit: int = MAX_SAMPLE) -> str:
@@ -38,6 +34,118 @@ def trim(html: str, limit: int = MAX_SAMPLE) -> str:
     text = re.sub(r"<!--.*?-->", " ", text, flags=re.S)
     text = re.sub(r"\s+", " ", text)
     return text[:limit]
+
+
+CATALOG_WORDS = {
+    "aniyomi": ("аниме", "сериалы", "фильмы", "каталог", "озвучка", "мультфильмы"),
+    "mihon": ("манга", "манхва", "каталог", "читать"),
+    "lnreader": ("ранобэ", "новеллы", "книги", "каталог"),
+}
+
+
+def _item_links(html: str) -> list[str]:
+    """Ссылки на карточки тайтлов. У DLE это /12345-slug.html."""
+    links = re.findall(r'href="([^"]+)"', html)
+    clean = [link for link in links if not any(
+        bad in link.lower() for bad in (".css", ".js", ".png", ".jpg", "/templates/", "/engine/", "#", "rss.xml")
+    )]
+    dle = [link for link in clean if re.search(r"/\d{2,}-[^/]*\.html", link)]
+    if dle:
+        return dle
+    return [link for link in clean if re.search(r"/(anime|manga|ranobe|novel)/[\w-]{3,}/$", link)
+            and not re.search(r"/(anime|manga|ranobe)/(page|tag)/", link)]
+
+
+def _pagination_link(html: str) -> str:
+    for href in re.findall(r'href="([^"]+)"', html):
+        if re.search(r"(page/2|PAGEN_1=2|\?page=2|start=)", href, re.I):
+            return href
+    return ""
+
+
+def discover_catalog(base_url: str, kind: str = "aniyomi") -> dict:
+    """Находит раздел каталога и шаблоны ссылок по самой вёрстке.
+
+    Разведка ищет API, но у обычных сайтов его нет: каталог — это страница
+    раздела. Без этого модель выдумывает пути вида /anime/page/2/.
+    """
+    base = base_url.rstrip("/")
+    home = fetch(base + "/")
+    if not home:
+        return {}
+
+    words = CATALOG_WORDS.get(kind, CATALOG_WORDS["aniyomi"])
+    candidates: list[tuple[int, str]] = [(0, base + "/")]
+    # Типовые разделы: на них часто нет ссылки в меню, но каталог живёт там.
+    for section in ("/anime/", "/manga/", "/ranobe/", "/catalog/"):
+        candidates.append((0, base + section))
+    for href, text in re.findall(r'href="([^"]+)"[^>]*>([^<]{2,40})', home):
+        label = text.strip().lower()
+        if not any(word in label for word in words):
+            continue
+        url = href if href.startswith("http") else base + href
+        if url.rstrip("/") == base:
+            continue
+        candidates.append((1, url))
+
+    best = {"score": -1, "url": "", "items": [], "pagination": ""}
+    fallback = {"score": -1, "url": "", "items": [], "pagination": ""}
+    for _priority, url in candidates[:8]:
+        html = fetch(url)
+        if len(html) < 2000:
+            continue
+        items = _item_links(html)
+        pagination = _pagination_link(html)
+        score = len(items) * 2 + (12 if pagination else 0)
+        # Раздел вида /anime/ — это каталог, а не главная с подборками.
+        if re.search(r"/(anime|manga|ranobe|novel)/?$", url):
+            score += 10
+        entry = {"score": score, "url": url, "items": items, "pagination": pagination}
+        # Каталог — это страница с листанием. Главная без пагинации годится
+        # только как запасной вариант.
+        if pagination and score > best["score"]:
+            best = entry
+        elif not pagination and score > fallback["score"]:
+            fallback = entry
+
+    # Раздел вида /anime/ — это и есть каталог: он шире любой подборки.
+    sections = []
+    for _priority, url in candidates[:8]:
+        if not re.search(r"/(anime|manga|ranobe|novel)/?$", url):
+            continue
+        html = fetch(url)
+        items = _item_links(html)
+        if len(items) >= 5:
+            sections.append({"score": len(items), "url": url, "items": items,
+                             "pagination": _pagination_link(html)})
+    if sections:
+        sections.sort(key=lambda item: (bool(item["pagination"]), item["score"]), reverse=True)
+        best = sections[0]
+
+    if not best["url"]:
+        best = fallback
+    if not best["url"]:
+        return {}
+
+    if best["pagination"] and not best["pagination"].startswith("http"):
+        best["pagination"] = base + best["pagination"]
+
+    sample_items = list(dict.fromkeys(best["items"]))[:3]
+    detail_url = ""
+    for link in sample_items:
+        candidate = link if link.startswith("http") else base + link
+        page = fetch(candidate)
+        if len(page) > 3000:
+            detail_url = candidate
+            break
+
+    return {
+        "catalog_url": best["url"],
+        "item_count": best["score"],
+        "sample_items": sample_items,
+        "detail_url": detail_url,
+        "pagination_url": best["pagination"],
+    }
 
 
 def samples(base_url: str, list_path: str = "") -> dict:
@@ -118,6 +226,12 @@ baseUrl: {base_url}
 {reference}
 ```
 
+Найденные адреса (используй их как шаблоны, не выдумывай пути):
+- каталог: {catalog_url}
+- карточка тайтла: {detail_url}
+- пагинация: {pagination_url}
+- примеры карточек: {sample_items}
+
 Образец главной страницы:
 ```html
 {home}
@@ -149,7 +263,12 @@ def build(site, module_dir: Path, repo: Path) -> tuple[bool, str]:
         return False, "нет файла-скелета"
     target = sources[0]
 
+    navigation = discover_catalog(site.base_url, site.kind)
     prompt = PROMPT.format(
+        catalog_url=navigation.get("catalog_url") or f"{site.base_url}/",
+        detail_url_found=navigation.get("detail_url", ""),
+        pagination_url=navigation.get("pagination_url", "не найдена — ищи в разметке"),
+        sample_items=", ".join(navigation.get("sample_items", [])[:3]) or "нет",
         name=site.name,
         base_url=site.base_url,
         cls=target.stem,

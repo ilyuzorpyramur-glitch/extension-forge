@@ -1,1 +1,102 @@
-[]
+[
+ {
+  "sig": "scroll: pages : # # # note : страница пустая",
+  "step": "scroll",
+  "cause": "не листается",
+  "fix": "пагинация: offset/page/per_page — сверить с сайтом",
+  "kind": "aniyomi",
+  "site": "animaunt",
+  "hits": 1,
+  "ts": 1793473870
+ },
+ {
+  "sig": "details: нет тайтла",
+  "step": "details",
+  "cause": "детали не открываются",
+  "fix": "DTO не совпадает с ответом: типы полей",
+  "kind": "aniyomi",
+  "site": "animaunt",
+  "hits": 1,
+  "ts": 1793473870
+ },
+ {
+  "sig": "status: нет деталей",
+  "step": "status",
+  "cause": "статус не определяется",
+  "fix": "взять из поля сайта (год окончания/статус)",
+  "kind": "aniyomi",
+  "site": "animaunt",
+  "hits": 1,
+  "ts": 1793473870
+ },
+ {
+  "sig": "thumb: нет деталей",
+  "step": "thumb",
+  "cause": "постер не грузится",
+  "fix": "относительный url → абсолютный, поле постера",
+  "kind": "aniyomi",
+  "site": "animaunt",
+  "hits": 1,
+  "ts": 1793473870
+ },
+ {
+  "sig": "thumbs: нет каталога",
+  "step": "thumbs",
+  "cause": "часть постеров битая",
+  "fix": "разные поля постера, https, размер",
+  "kind": "aniyomi",
+  "site": "animaunt",
+  "hits": 1,
+  "ts": 1793473870
+ },
+ {
+  "sig": "episodes: нет деталей",
+  "step": "episodes",
+  "cause": "серии не отдаются",
+  "fix": "селектор/поле списка серий",
+  "kind": "aniyomi",
+  "site": "animaunt",
+  "hits": 1,
+  "ts": 1793473870
+ },
+ {
+  "sig": "epurls: нет серий",
+  "step": "epurls",
+  "cause": "у серии нет url",
+  "fix": "поле url серии",
+  "kind": "aniyomi",
+  "site": "animaunt",
+  "hits": 1,
+  "ts": 1793473870
+ },
+ {
+  "sig": "filters: фильтров нет",
+  "step": "filters",
+  "cause": "фильтры не работают",
+  "fix": "мультивыбор в одном параметре + подключение к запросу",
+  "kind": "aniyomi",
+  "site": "animaunt",
+  "hits": 1,
+  "ts": 1793473870
+ },
+ {
+  "sig": "search: total :# relevant :# url : https: animaunt org index php do search sample :",
+  "step": "search",
+  "cause": "поиск не находит",
+  "fix": "эндпоинт/параметр поиска, пустой запрос = каталог",
+  "kind": "aniyomi",
+  "site": "animaunt",
+  "hits": 1,
+  "ts": 1793473870
+ },
+ {
+  "sig": "video: нет серии",
+  "step": "video",
+  "cause": "видео не играет",
+  "fix": "цепочка хост→плеер: id, а не content_id; заголовки",
+  "kind": "aniyomi",
+  "site": "animaunt",
+  "hits": 1,
+  "ts": 1793473870
+ }
+]

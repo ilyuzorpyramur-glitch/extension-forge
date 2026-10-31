@@ -8,7 +8,11 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import socket
+import subprocess
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -51,7 +55,77 @@ def decode_html(raw: bytes, content_type: str = "") -> str:
     return raw.decode("utf-8", "replace")
 
 
-def _get(url: str, headers: dict | None = None, timeout: int = 25) -> tuple[int, str]:
+def _curl_get(url: str, headers: dict | None = None, timeout: int = 25, proxy: str = "") -> tuple[int, bytes]:
+    """GET через curl: нужен там, где сайт не пускает напрямую (гео-блок)."""
+    command = ["curl", "-sS", "--max-time", str(timeout), "-A", UA, "-w", "\n%{http_code}"]
+    if proxy:
+        command += ["--proxy", proxy]
+    for name, value in (headers or {}).items():
+        command += ["-H", f"{name}: {value}"]
+    command.append(url)
+    result = subprocess.run(command, capture_output=True)
+    if result.returncode != 0 or not result.stdout:
+        return 0, b""
+    body, _, code = result.stdout.rpartition(b"\n")
+    try:
+        return int(code.strip() or 0), body
+    except ValueError:
+        return 0, b""
+
+
+def local_proxy() -> str:
+    """Локальный socks от sing-box: RU — напрямую, заблокированные — через него."""
+    explicit = os.environ.get("GENERATOR_PROXY", "").strip()
+    if explicit:
+        return explicit
+    if os.environ.get("GENERATOR_DIRECT") == "1":
+        return ""
+    try:
+        with socket.create_connection(("127.0.0.1", 1080), timeout=1.0):
+            return "socks5h://127.0.0.1:1080"
+    except OSError:
+        return ""
+
+
+_BLOCKED_HOSTS: set[str] = set()
+
+
+def fetch_html(url: str, headers: dict | None = None, timeout: int = 25,
+               allow_proxy: bool = True) -> tuple[int, str]:
+    """Страница сайта: сначала напрямую, при отказе — через VPN.
+
+    Часть русских сайтов не пускает адреса датацентров: без второго захода
+    разведка видела «HTTP 0» и сайт считался мёртвым.
+    """
+    host = urllib.parse.urlparse(url).netloc
+    if host in _BLOCKED_HOSTS and allow_proxy:
+        proxy = local_proxy()
+        if proxy:
+            code, raw = _curl_get(url, headers, timeout, proxy)
+            if code == 200 and raw:
+                return code, decode_html(raw, "")
+            return code, ""
+
+    status, body = _get_direct(url, headers, timeout)
+    if status == 200 and body:
+        return status, body
+    # Перебирать прокси на каждый 404 — это десятки лишних запросов и минуты
+    # ожидания. Запасной путь нужен только при отказе в соединении или блоке.
+    if status not in (0, 403, 429):
+        return status, body
+    proxy = local_proxy() if allow_proxy else ""
+    if not proxy:
+        return status, body
+    code, raw = _curl_get(url, headers, timeout, proxy)
+    if status == 0:
+        # Хост не отвечает напрямую — дальше сразу через прокси.
+        _BLOCKED_HOSTS.add(host)
+    if code == 200 and raw:
+        return code, decode_html(raw, "")
+    return status or code, body
+
+
+def _get_direct(url: str, headers: dict | None = None, timeout: int = 25) -> tuple[int, str]:
     request = urllib.request.Request(url, headers={"User-Agent": UA, **(headers or {})})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -60,6 +134,10 @@ def _get(url: str, headers: dict | None = None, timeout: int = 25) -> tuple[int,
         return error.code, ""
     except Exception:
         return 0, ""
+
+
+def _get(url: str, headers: dict | None = None, timeout: int = 25) -> tuple[int, str]:
+    return fetch_html(url, headers, timeout)
 
 
 def _get_json(url: str, headers: dict | None = None):
@@ -277,6 +355,7 @@ def _bundle_urls(url: str, html: str) -> list[str]:
 
 def profile(url: str, key_header: str = "", key: str = "") -> dict:
     """Возвращает черновик декларации + список того, что не удалось найти."""
+    deadline = time.time() + float(os.environ.get("RECON_DEADLINE", "180"))
     url = url.rstrip("/")
     status, html = _get(url)
     if status != 200:
@@ -307,9 +386,20 @@ def profile(url: str, key_header: str = "", key: str = "") -> dict:
         "gaps": [],
     }
 
-    for root in _candidate_roots(url, html, bundles):
+    probes = 0
+    max_probes = int(os.environ.get("RECON_MAX_PROBES", "36"))
+    if "/api/" not in html and not bundles:
+        # Обычная HTML-вёрстка: API-пути перебирать нечего, сразу к разбору.
+        result["gaps"].append("api не обнаружен — html-режим")
+    for root in ([] if ("/api/" not in html and not bundles) else _candidate_roots(url, html, bundles)):
+        if time.time() > deadline or probes >= max_probes:
+            result["gaps"].append("разведка прервана по времени/лимиту проб")
+            break
         for hint in LIST_HINTS:
+            if probes >= max_probes or time.time() > deadline:
+                break
             for path in (f"/{hint}", f"/manga/{hint}", f"/titles/{hint}"):
+                probes += 1
                 probe = f"{root}{path}"
                 separator = "&" if "?" in probe else "?"
                 payload = _get_json(f"{probe}{separator}page=1&per_page=5&limit=5", headers)

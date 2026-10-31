@@ -21,6 +21,7 @@ import argparse
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import threading
@@ -126,12 +127,9 @@ def learn(step: str, message: str, cause: str, fix: str, kind: str, site: str) -
 # ---------------------------------------------------------------- classify
 
 def _fetch(url: str) -> str:
-    try:
-        request = urllib.request.Request(url, headers={"User-Agent": UA, "Accept-Language": "ru,en;q=0.8"})
-        with urllib.request.urlopen(request, timeout=30) as response:
-            return response.read().decode("utf-8", "replace")
-    except Exception:
-        return ""
+    """Страница сайта: напрямую, при гео-блоке — через VPN (recon.fetch_html)."""
+    status, body = recon.fetch_html(url)
+    return body if status == 200 else ""
 
 
 def classify(url: str) -> dict:
@@ -276,8 +274,40 @@ def run_stand(kind: str, site_id: str, title_url: str = "") -> dict:
         return _stand_locked(kind, site_id, title_url)
 
 
+def _adb(args: list[str]) -> None:
+    device = os.environ.get("STAND_DEVICE", "172.17.0.2:5555")
+    buildwatch.sh(["adb", "-s", device] + args)
+
+
+def _device_proxy(proxy: str) -> None:
+    """Прокси устройству через adb reverse: host 127.0.0.1 → устройство.
+
+    Так не нужно открывать порт наружу и не остаётся мусора в настройках.
+    """
+    port = proxy.split(":")[-1]
+    _adb(["reverse", f"tcp:{port}", f"tcp:{port}"])
+    _adb(["shell", "settings", "put", "global", "http_proxy", proxy])
+
+
+def _device_proxy_off() -> None:
+    _adb(["shell", "settings", "delete", "global", "http_proxy"])
+    _adb(["reverse", "--remove", "tcp:1083"])
+
+
+def _proxy_alive(address: str) -> bool:
+    host, _, port = address.partition(":")
+    try:
+        with socket.create_connection((host, int(port)), timeout=2):
+            return True
+    except OSError:
+        return False
+
+
 def _stand_locked(kind: str, site_id: str, title_url: str = "") -> dict:
     repo = REPOS[kind]
+    proxy = os.environ.get("STAND_PROXY_ADDR", "127.0.0.1:1083")
+    if not _proxy_alive(proxy):
+        proxy = ""
     # Стенд читает локальный индекс: подтягиваем свежий.
     buildwatch.sh(["git", "-C", str(repo), "fetch", "-q", "origin"])
     buildwatch.sh(["git", "-C", str(repo), "pull", "--rebase", "-q", "origin", "main"])
@@ -293,8 +323,26 @@ def _stand_locked(kind: str, site_id: str, title_url: str = "") -> dict:
     try:
         rows = json.loads(Path(out_path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return {"module": site_id, "passed": 0, "steps": [], "error": out[-400:]}
-    return rows[0] if rows else {"module": site_id, "passed": 0, "steps": []}
+        rows = []
+    row = rows[0] if rows else {"module": site_id, "passed": 0, "steps": [], "error": out[-400:]}
+
+    # Сайт может быть заблокирован в РФ (заглушка провайдера). Тогда вторая
+    # попытка идёт через локальный прокси, и прокси обязательно снимается.
+    if row.get("passed", 0) == 0 and proxy and not os.environ.get("STAND_PROXY"):
+        print(f"  ↻ {site_id}: повтор через прокси {proxy}")
+        _device_proxy(proxy)
+        try:
+            env["STAND_PROXY"] = proxy
+            code, out = run(cmd, timeout=900, env=env)
+            try:
+                rows = json.loads(Path(out_path).read_text(encoding="utf-8"))
+                if rows:
+                    row = rows[0]
+            except (OSError, ValueError):
+                pass
+        finally:
+            _device_proxy_off()
+    return row
 
 
 def failures(row: dict) -> list[dict]:
@@ -437,6 +485,11 @@ def process_site(url: str, args) -> dict:
             print(f"  ✖ генерация: {out.strip().splitlines()[-1] if out.strip() else code}")
             return result
         result["steps"]["generate"] = "ai"
+    directory = module_dir(result["kind"], site_id)
+    if directory:
+        cleaned = buildwatch.spotless_lite(directory)
+        if cleaned:
+            print(f"  ✔ формат: {', '.join(cleaned)}")
     print("  ✔ модуль и иконка готовы")
 
     # --- 3-5. сборка и стенд, до args.iterations кругов
@@ -446,11 +499,21 @@ def process_site(url: str, args) -> dict:
         print(f"  --- круг {attempt}")
         if not args.no_build and repo_slug:
             before_run = buildwatch.latest_run(repo_slug).get("id", 0)
-            if not buildwatch.commit_push(repo, f"feat({site_id}): конвейер, круга {attempt}"):
-                print("  ↷ нечего пушить")
-            else:
+            pushed = buildwatch.commit_push(repo, f"feat({site_id}): конвейер, круга {attempt}")
+            if pushed:
                 started_run = time.time()
                 run_info = buildwatch.wait_run(repo_slug, timeout=args.build_timeout, since_id=before_run)
+            else:
+                # Пушить нечего (правки уже в коммите) — но сборку этого
+                # коммита ещё надо дождаться, иначе стенд увидит старый индекс.
+                current = buildwatch.latest_run(repo_slug)
+                print("  ↷ пушить нечего, беру последнюю сборку")
+                if current.get("status") != "completed":
+                    run_info = buildwatch.wait_run(repo_slug, run_id=current.get("id", 0),
+                                                   timeout=args.build_timeout)
+                else:
+                    run_info = current
+                started_run = time.time()
                 result["steps"][f"build{attempt}"] = run_info.get("conclusion", "?")
                 if run_info.get("conclusion") != "success":
                     log = buildwatch.failed_log(repo_slug, run_info.get("id", 0))
@@ -568,7 +631,7 @@ def main(argv: list[str]) -> None:
                          if line.strip() and not line.startswith("#")]
             else:
                 print(f"✖ не найдено: {source}")
-    if not urls:
+    if not urls and not args.repair:
         parser.print_help()
         return
     if args.limit:
@@ -581,26 +644,99 @@ def main(argv: list[str]) -> None:
         if not kind:
             print(f"✖ модуль {args.repair} не найден ни в одном репозитории")
             return
-        row = {"url": f"repair:{args.repair}", "site_id": args.repair, "kind": kind,
-               "status": "?", "notes": [], "steps": {}}
         if kind != "aniyomi":
             print(f"  стенд для {kind} не применим (только аниме)")
             return
-        stand = run_stand(kind, args.repair)
-        total, passed = len(stand.get("steps", [])), stand.get("passed", 0)
-        row["steps"]["stand"] = f"{passed}/{total}"
-        print(f"  стенд {args.repair}: {passed}/{total}")
-        for note in feedback_text(stand):
-            print(f"    · {note[:170]}")
-            row["notes"].append(note)
-        fixed = ai_fix_module(kind, args.repair, stand)
-        for note in fixed:
-            print(f"    ✎ {note}")
-            row["notes"].append(note)
-        if fixed and not args.no_build:
+
+        row = {"url": f"repair:{args.repair}", "site_id": args.repair, "kind": kind,
+               "status": "?", "notes": [], "steps": {}}
+        repo = REPOS[kind]
+        slug = buildwatch.slug(repo)
+        directory = module_dir(kind, args.repair)
+
+        for attempt in range(1, args.iterations + 1):
+            stand = run_stand(kind, args.repair)
+            total, passed = len(stand.get("steps", [])), stand.get("passed", 0)
+            row["steps"][f"stand{attempt}"] = f"{passed}/{total}"
+            print(f"  стенд {args.repair} (круг {attempt}): {passed}/{total}")
+
+            if not total:
+                # Модуля нет в индексе: сначала надо починить сборку, стенду
+                # нечего проверять.
+                run_info = buildwatch.latest_run(slug)
+                if run_info.get("conclusion") != "failure":
+                    row["status"] = "нет в индексе"
+                    break
+                log = buildwatch.failed_log(slug, run_info.get("id", 0))
+                errors = buildwatch.parse_errors(log)
+                fixed = buildwatch.apply_spotless_diff(log, directory) if directory else []
+                if not fixed and errors and directory:
+                    fixed = buildwatch.fix_mechanical(directory, errors)
+                if not fixed and errors and directory:
+                    fixed = buildwatch.fix_with_ai(directory, errors)
+                if not fixed:
+                    print(f"    ✖ сборка падает, готовых правок нет ({len(errors)} ошибок)")
+                    for error in errors[:4]:
+                        print(f"      {error['file'].split('/')[-1]}:{error['line']} {error['message'][:90]}")
+                    row["status"] = "сборка падает"
+                    break
+                for note in fixed:
+                    print(f"    ✎ {note}")
+                    row["notes"].append(note)
+                if directory:
+                    buildwatch.spotless_lite(directory)
+                bump(kind, args.repair)
+                before = buildwatch.latest_run(slug).get("id", 0)
+                buildwatch.commit_push(repo, f"fix({args.repair}): починка сборки")
+                info = buildwatch.wait_run(slug, timeout=args.build_timeout, since_id=before)
+                print(f"    сборка: {info.get('conclusion')}")
+                row["steps"][f"build{attempt}"] = info.get("conclusion", "?")
+                continue
+            if total and passed == total:
+                row["status"] = "готово"
+                set_best(args.repair, passed, total)
+                break
+
+            for note in feedback_text(stand):
+                print(f"    · {note[:170]}")
+                row["notes"].append(note)
+
+            fixed = ai_fix_module(kind, args.repair, stand)
+            if not fixed:
+                row["status"] = f"стенд {passed}/{total}"
+                print("    ✖ готовых рецептов нет")
+                break
+            for note in fixed:
+                print(f"    ✎ {note}")
+                row["notes"].append(note)
+
+            if directory:
+                buildwatch.spotless_lite(directory)
             bump(kind, args.repair)
-            buildwatch.commit_push(REPOS[kind], f"fix({args.repair}): правки по стенду")
-        row["status"] = "исправлено" if fixed else f"стенд {passed}/{total}"
+            if args.no_build or not slug:
+                row["status"] = f"правки внесены, сборка не запускалась ({passed}/{total})"
+                break
+
+            before = buildwatch.latest_run(slug).get("id", 0)
+            if buildwatch.commit_push(repo, f"fix({args.repair}): правки по стенду"):
+                run_info = buildwatch.wait_run(slug, timeout=args.build_timeout, since_id=before)
+                print(f"    сборка: {run_info.get('conclusion')}")
+                row["steps"][f"build{attempt}"] = run_info.get("conclusion", "?")
+                if run_info.get("conclusion") != "success":
+                    log = buildwatch.failed_log(slug, run_info.get("id", 0))
+                    errors = buildwatch.parse_errors(log)
+                    for error in errors[:4]:
+                        print(f"      {error['file'].split('/')[-1]}:{error['line']} {error['message'][:90]}")
+                    page_fixed = buildwatch.apply_spotless_diff(log, directory) if directory else []
+                    for item in page_fixed:
+                        row["notes"].append(item)
+                    if page_fixed and directory:
+                        buildwatch.commit_push(repo, f"fix({args.repair}): формат по spotless")
+                    row["status"] = "сборка падает"
+                    break
+        else:
+            row["status"] = "исчерпаны круги"
+
         REPORTS.mkdir(exist_ok=True)
         out = Path(args.out) if args.out else REPORTS / f"repair-{args.repair}-{int(time.time())}.json"
         out.write_text(json.dumps([row], ensure_ascii=False, indent=1), encoding="utf-8")
