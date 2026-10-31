@@ -55,8 +55,13 @@ def latest_run(repo_slug: str) -> dict:
     return runs[0] if runs else {}
 
 
-def wait_run(repo_slug: str, run_id: int = 0, timeout: int = 1500, poll: int = 30) -> dict:
-    """Ждёт завершения сборки. Возвращает последний известный run."""
+def wait_run(repo_slug: str, run_id: int = 0, timeout: int = 1500, poll: int = 30,
+             since_id: int = 0) -> dict:
+    """Ждёт завершения сборки. Возвращает последний известный run.
+
+    since_id — номер прошлой сборки: без него wait_run возвращал уже
+    завершённый run, и конвейер шёл к стенду до того, как CI собрал APK.
+    """
     deadline = time.time() + timeout
     run = {}
     while time.time() < deadline:
@@ -64,7 +69,11 @@ def wait_run(repo_slug: str, run_id: int = 0, timeout: int = 1500, poll: int = 3
             run = latest_run(repo_slug)
             if not run:
                 return {}
-            run_id = run.get("id") or 0
+            fresh = run.get("id") or 0
+            if since_id and fresh == since_id:
+                time.sleep(10)
+                continue
+            run_id = fresh
             # Дать GitHub время создать run для только что запушенного коммита.
             time.sleep(8)
             continue
@@ -80,12 +89,19 @@ def failed_log(repo_slug: str, run_id: int) -> str:
 
 
 ERROR_RE = re.compile(r"([\w./-]+\.kt):(\d+):(\d+)?:?\s*(?:error:\s*)?(.+)")
+# spotless/ktlint печатает иначе: "Файл.kt:L116 ktlint(ktlint) Expecting ..."
+KTlint_RE = re.compile(r"([\w./-]+\.kt):L(\d+)\s+(?:ktlint\([^)]*\)\s*)?(.+)")
 
 
 def parse_errors(log: str) -> list[dict]:
     """Kotlin-ошибки и замечания ktlint из лога сборки."""
     found = []
     for line in log.splitlines():
+        ktlint = KTlint_RE.search(line)
+        if ktlint:
+            path_name, line_no, message = ktlint.groups()
+            found.append({"file": path_name, "line": int(line_no), "message": message.strip()[:300]})
+            continue
         match = ERROR_RE.search(line)
         if not match:
             continue
@@ -145,6 +161,80 @@ def fix_mechanical(module_dir: Path, errors: list[dict]) -> list[str]:
             path.write_text("\n".join(lines) + "\n", encoding="utf-8")
             done.append(f"{path.name}:{item['line']} отступ → {want}")
     return done
+
+
+SPOTLESS_MARK = "The following files had format violations:"
+
+
+def apply_spotless_diff(log: str, module_dir: Path) -> list[str]:
+    """Применяет дифф, который печатает spotless.
+
+    Это самый частый отказ сборки: лишний импорт, отступ, длина строки.
+    spotless сам показывает нужные правки — берём их как есть, без модели.
+    """
+    if SPOTLESS_MARK not in log:
+        return []
+
+    lines = log.splitlines()
+    start = next(index for index, line in enumerate(lines) if SPOTLESS_MARK in line)
+    fixed: list[str] = []
+    current: Path | None = None
+    hunk_old: list[str] = []
+    hunk_new: list[str] = []
+
+    def flush() -> None:
+        nonlocal hunk_old, hunk_new
+        if current is None or not hunk_old:
+            hunk_old, hunk_new = [], []
+            return
+        try:
+            text = current.read_text(encoding="utf-8")
+        except OSError:
+            hunk_old, hunk_new = [], []
+            return
+        old_block = "\n".join(hunk_old)
+        new_block = "\n".join(hunk_new)
+        if old_block and old_block in text:
+            current.write_text(text.replace(old_block, new_block, 1), encoding="utf-8")
+            fixed.append(f"{current.name}: формат по spotless")
+        hunk_old, hunk_new = [], []
+
+    for raw in lines[start + 1:]:
+        line = raw.replace("\u00b7", " ")
+        # Формат лога GitHub: "job<TAB>step<TAB>2026-10-31T13:20:12.123Z текст".
+        if "\t" in line:
+            line = line.rsplit("\t", 1)[-1]
+        line = re.sub(r"^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s?", "", line)
+        if line.strip().startswith("BUILD ") or line.startswith("##["):
+            break
+        if line.startswith("      ") and line.strip().endswith(".kt"):
+            flush()
+            name = line.strip()
+            current = module_dir / Path(name).name
+            if not current.exists():
+                matches = list(module_dir.rglob(Path(name).name))
+                current = matches[0] if matches else None
+            continue
+        if line.strip().startswith("@@"):
+            flush()
+            continue
+        if current is None:
+            continue
+        # spotless печатает дифф с отступом: маркер стоит на 10-й колонке.
+        marker_at = line.find("@@")
+        marker_at = 10 if marker_at < 0 or marker_at > 12 else marker_at
+        if len(line) <= marker_at or line[:marker_at].strip():
+            continue
+        marker, body = line[marker_at], line[marker_at + 1:]
+        if marker == "-":
+            hunk_old.append(body)
+        elif marker == "+":
+            hunk_new.append(body)
+        elif marker == " ":
+            hunk_old.append(body)
+            hunk_new.append(body)
+    flush()
+    return fixed
 
 
 AI_PROMPT = """Ты чинишь Kotlin-расширение для Aniyomi. Сборка упала.

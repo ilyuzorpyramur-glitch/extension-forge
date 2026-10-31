@@ -445,18 +445,24 @@ def process_site(url: str, args) -> dict:
     for attempt in range(1, args.iterations + 1):
         print(f"  --- круг {attempt}")
         if not args.no_build and repo_slug:
+            before_run = buildwatch.latest_run(repo_slug).get("id", 0)
             if not buildwatch.commit_push(repo, f"feat({site_id}): конвейер, круга {attempt}"):
                 print("  ↷ нечего пушить")
             else:
                 started_run = time.time()
-                run_info = buildwatch.wait_run(repo_slug, timeout=args.build_timeout)
+                run_info = buildwatch.wait_run(repo_slug, timeout=args.build_timeout, since_id=before_run)
                 result["steps"][f"build{attempt}"] = run_info.get("conclusion", "?")
                 if run_info.get("conclusion") != "success":
-                    errors = buildwatch.parse_errors(buildwatch.failed_log(repo_slug, run_info.get("id", 0)))
+                    log = buildwatch.failed_log(repo_slug, run_info.get("id", 0))
+                    errors = buildwatch.parse_errors(log)
                     print(f"  ✖ сборка: {len(errors)} ошибок")
-                    fixed = buildwatch.fix_mechanical(repo / "src" / "ru" / site_id, errors) if errors else []
+                    module_path = repo / "src" / "ru" / site_id
+                    # spotless сам печатает нужный дифф — применяем его первым.
+                    fixed = buildwatch.apply_spotless_diff(log, module_path)
                     if not fixed and errors:
-                        fixed = buildwatch.fix_with_ai(repo / "src" / "ru" / site_id, errors)
+                        fixed = buildwatch.fix_mechanical(module_path, errors)
+                    if not fixed and errors:
+                        fixed = buildwatch.fix_with_ai(module_path, errors)
                     for note in fixed:
                         result["notes"].append(note)
                     if fixed:
@@ -493,6 +499,12 @@ def process_site(url: str, args) -> dict:
             set_best(site_id, passed, total)
         result["steps"][f"stand{attempt}"] = f"{passed}/{total}"
         print(f"  стенд: {passed}/{total}")
+        if not total:
+            # Модуля ещё нет в индексе: сборка не доехала, это не «прошёл».
+            result["status"] = "нет в индексе (сборка не доехала)"
+            result["notes"].append(row.get("error", "")[:200])
+            register_fail(site_id)
+            return result
         if passed == total and total:
             result["status"] = "готово"
             result["passed"] = passed
