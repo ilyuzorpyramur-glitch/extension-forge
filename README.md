@@ -62,6 +62,22 @@ python3 forge.py generate sites/my_site.yaml
 | `forge.py bump <mihon\|aniyomi\|lnreader> <site_id>` | поднять версию расширения |
 | `forge.py list` | список расширений на попечении |
 | `forge.py watch` | прогнать сторож по живым источникам |
+| `forge.py audit` | прогнать стенд: проверить расширения в живом приложении |
+
+## 🧪 Стенд
+
+Генератор и стенд живут вместе: собрали модуль — сразу проверили его
+в живом приложении.
+
+```bash
+python3 forge.py audit --from-index --lang any --batch 1 --only domanime
+python3 forge.py audit --from-index --only domanime --title-url /43-pervyj-shag-2000.html
+```
+
+Стенд ставит APK из `index.min.json` (как это делает приложение), гоняет
+каталог, детали, постеры, серии, порядок, фильтры, поиск и видео
+(через `getHosterList` → `getVideoList`). Подробности и требования к
+хосту — в [`stand/README.md`](stand/README.md).
 
 ## 📋 Формат декларации
 
