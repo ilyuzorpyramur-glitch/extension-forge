@@ -12,6 +12,7 @@
   forge bump <target> <name>   — поднять версию расширения
   forge list                   — список известных сайтов
   forge watch                  — прогнать сторож по зарегистрированным расширениям
+  forge audit [аргументы]      — прогнать стенд (Frida) по расширениям
 """
 
 from __future__ import annotations
@@ -1696,6 +1697,20 @@ def cmd_watch(args: list[str]) -> None:
     subprocess.run([sys.executable, str(FORGE_ROOT / "watchdog" / "watchdog.py")] + args)
 
 
+def cmd_audit(args: list[str]) -> None:
+    """Стенд: проверка расширений в приложении через Frida.
+
+    Все аргументы уходят в stand/audit.py, например:
+      forge audit --only domanime --batch 1
+      forge audit --from-index --title-url /43-pervyj-shag-2000.html --only domanime
+    """
+    import runpy
+
+    script = str(FORGE_ROOT / "stand" / "audit.py")
+    sys.argv = [script] + args
+    runpy.run_path(script, run_name="__main__")
+
+
 COMMANDS = {
     "add": cmd_add,
     "generate": cmd_generate,
@@ -1703,6 +1718,8 @@ COMMANDS = {
     "list": cmd_list,
     "watch": cmd_watch,
     "doctor": cmd_doctor,
+    "audit": cmd_audit,
+    "stand": cmd_audit,
 }
 
 
