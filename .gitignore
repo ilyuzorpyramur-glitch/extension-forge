@@ -4,3 +4,9 @@ knowledge/ai_cache/
 reports/
 .gemini_key
 replay/
+*.log
+.venv/
+*.apk
+*.keystore
+*.jks
+*.p12
