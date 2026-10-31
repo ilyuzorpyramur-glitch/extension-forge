@@ -23,6 +23,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 from pathlib import Path
@@ -30,6 +31,7 @@ from pathlib import Path
 FORGE_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(FORGE_ROOT))
 
+import aihtml  # noqa: E402
 import buildwatch  # noqa: E402
 import gemini  # noqa: E402
 import recon  # noqa: E402
@@ -41,6 +43,10 @@ REPOS = {
     "lnreader": Path("/home/work/repos/lnreader-ru-plugins"),
 }
 LESSONS = FORGE_ROOT / "knowledge" / "lessons.json"
+BEST = FORGE_ROOT / "knowledge" / "best.json"
+FAILS = FORGE_ROOT / "knowledge" / "fails.json"
+QUARANTINE = FORGE_ROOT / "sites" / "quarantine.yaml"
+REPLAY = FORGE_ROOT / "replay"
 REPORTS = FORGE_ROOT / "reports"
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
@@ -193,6 +199,54 @@ def site_id_for(url: str) -> str:
     return re.sub(r"[^a-z0-9]", "", core)
 
 
+
+def _load_map(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_map(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def best_score(site: str) -> dict:
+    return _load_map(BEST).get(site, {})
+
+
+def set_best(site: str, passed: int, total: int) -> None:
+    data = _load_map(BEST)
+    data[site] = {"passed": passed, "total": total, "ts": int(time.time())}
+    _save_map(BEST, data)
+
+
+def register_fail(site: str) -> int:
+    data = _load_map(FAILS)
+    data[site] = data.get(site, 0) + 1
+    _save_map(FAILS, data)
+    if data[site] >= 3 and site not in quarantine():
+        QUARANTINE.parent.mkdir(parents=True, exist_ok=True)
+        with QUARANTINE.open("a", encoding="utf-8") as handle:
+            handle.write(f"- {site}: три прогона без результата (снять вручную)\n")
+    return data[site]
+
+
+def quarantine() -> set:
+    try:
+        text = QUARANTINE.read_text(encoding="utf-8")
+    except OSError:
+        return set()
+    return {line.split(":", 1)[0].strip("- ").strip() for line in text.splitlines() if line.strip().startswith("-")}
+
+
+def save_replay(site: str, data: dict) -> None:
+    """Образцы страниц: починка идёт без повторных запросов к сайту."""
+    REPLAY.mkdir(parents=True, exist_ok=True)
+    (REPLAY / f"{site}.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+
 def module_dir(kind: str, site_id: str) -> Path | None:
     repo = REPOS[kind]
     base = repo / "src" / "ru" / site_id
@@ -214,7 +268,15 @@ def bump(kind: str, site_id: str) -> int:
 
 # ---------------------------------------------------------------- стенд
 
+STAND_LOCK = threading.Lock()
+
+
 def run_stand(kind: str, site_id: str, title_url: str = "") -> dict:
+    with STAND_LOCK:
+        return _stand_locked(kind, site_id, title_url)
+
+
+def _stand_locked(kind: str, site_id: str, title_url: str = "") -> dict:
     repo = REPOS[kind]
     # Стенд читает локальный индекс: подтягиваем свежий.
     buildwatch.sh(["git", "-C", str(repo), "fetch", "-q", "origin"])
@@ -290,6 +352,32 @@ def ai_fix_module(kind: str, site_id: str, row: dict) -> list[str]:
 
 # ---------------------------------------------------------------- конвейер
 
+def _safe_process(url: str, args) -> dict:
+    try:
+        return process_site(url, args)
+    except KeyboardInterrupt:
+        raise
+    except Exception as exc:  # один сайт не должен валить прогон
+        return {"url": url, "status": f"сбой: {exc}"}
+
+
+def _file_issue(rows: list[dict], report: Path) -> None:
+    """Итог прогона — в issue: видно, что и когда сломалось."""
+    bad = [row for row in rows if row.get("status") != "готово"]
+    if not bad:
+        return
+    lines = ["| Сайт | Тип | Статус | Что видел стенд |", "|---|---|---|---|"]
+    for row in bad:
+        steps = "; ".join(str(note)[:80] for note in (row.get("notes") or [])[:3])
+        lines.append(f"| {row.get('url', '')} | {row.get('kind', '')} | {row.get('status', '')} | {steps} |")
+    body = "\n".join(lines) + f"\n\nОтчёт: `{report.name}`"
+    repo = "ilyuzorpyramur-glitch/aniyomi-ru-anime-repo"
+    result = buildwatch.sh(["gh", "issue", "create", "-R", repo, "--title",
+                            f"Конвейер: {len(bad)} сайтов без результата",
+                            "--body", body, "--label", "pipeline"])
+    print(f"  issue: {result.strip().splitlines()[-1][:100] if result.strip() else 'не создан'}")
+
+
 def process_site(url: str, args) -> dict:
     started = time.time()
     result = {"url": url, "site_id": "", "kind": "", "nsfw": False, "status": "?", "notes": [], "steps": {}}
@@ -312,6 +400,10 @@ def process_site(url: str, args) -> dict:
 
     site_id = site_id_for(url)
     result["site_id"] = site_id
+    if site_id in quarantine() and not args.force:
+        result["status"] = "в карантине"
+        print(f"  ↷ {site_id} в карантине — вручную снимите sites/quarantine.yaml")
+        return result
     if module_dir(result["kind"], site_id) and not args.force:
         result["status"] = "уже есть в репозитории"
         print(f"  ↷ {site_id} уже есть — пропуск (--force, чтобы перегенерировать)")
@@ -321,14 +413,30 @@ def process_site(url: str, args) -> dict:
     code, out = run([sys.executable, str(FORGE_ROOT / "forge.py"), "add", url, "--force"])
     result["steps"]["generate"] = "ok" if code == 0 else f"код {code}"
     if code != 0:
-        result["status"] = "генерация не удалась"
-        result["notes"].append(out[-600:])
-        # Скелет в репозитории не нужен: откатываем только этот модуль.
-        repo_path = REPOS[result["kind"]]
-        buildwatch.sh(["git", "-C", str(repo_path), "checkout", "--", "."])
-        buildwatch.sh(["git", "-C", str(repo_path), "clean", "-fdq", f"src/ru/{site_id}"])
-        print(f"  ✖ генерация: {out.strip().splitlines()[-1] if out.strip() else code}")
-        return result
+        # Скелет — это не результат, но и не приговор: для HTML-сайтов
+        # тело парсера пишет модель по образцам страниц.
+        skeleton = "заглушка" in out or "TODO" in out
+        ai_ok = False
+        if skeleton and args.ai_html:
+            from forge import SiteSpec
+
+            spec = SiteSpec.from_yaml(FORGE_ROOT / "sites" / f"{site_id}.yaml")
+            directory = module_dir(result["kind"], site_id)
+            if directory:
+                save_replay(site_id, aihtml.samples(spec.base_url, spec.selectors.get("list_path", "")))
+                ai_ok, message = aihtml.build(spec, directory, REPOS[result["kind"]])
+                print(f"  {'✔' if ai_ok else '✖'} {message}")
+                result["notes"].append(message)
+        if not ai_ok:
+            result["status"] = "генерация не удалась"
+            result["notes"].append(out[-600:])
+            repo_path = REPOS[result["kind"]]
+            buildwatch.sh(["git", "-C", str(repo_path), "checkout", "--", "."])
+            buildwatch.sh(["git", "-C", str(repo_path), "clean", "-fdq", f"src/ru/{site_id}"])
+            register_fail(site_id)
+            print(f"  ✖ генерация: {out.strip().splitlines()[-1] if out.strip() else code}")
+            return result
+        result["steps"]["generate"] = "ai"
     print("  ✔ модуль и иконка готовы")
 
     # --- 3-5. сборка и стенд, до args.iterations кругов
@@ -372,6 +480,17 @@ def process_site(url: str, args) -> dict:
         row = run_stand(result["kind"], site_id)
         total = len(row.get("steps", []))
         passed = row.get("passed", 0)
+        previous = best_score(site_id)
+        if previous.get("passed") is not None and passed < previous["passed"] and total:
+            # Стало хуже — откатываем модуль к состоянию до правок.
+            repo_path = REPOS[result["kind"]]
+            buildwatch.sh(["git", "-C", str(repo_path), "checkout", "HEAD~1", "--", f"src/ru/{site_id}"])
+            buildwatch.commit_push(repo_path, f"revert({site_id}): правки ухудшили стенд")
+            result["status"] = f"откат: было {previous['passed']}/{previous.get('total', total)}, стало {passed}/{total}"
+            print(f"  ↺ {result['status']}")
+            return result
+        if total and passed >= previous.get("passed", -1):
+            set_best(site_id, passed, total)
         result["steps"][f"stand{attempt}"] = f"{passed}/{total}"
         print(f"  стенд: {passed}/{total}")
         if passed == total and total:
@@ -417,6 +536,10 @@ def main(argv: list[str]) -> None:
     parser.add_argument("--build-timeout", type=int, default=1500)
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--pause", type=int, default=20, help="пауза между сайтами, с")
+    parser.add_argument("--jobs", type=int, default=1, help="сколько сайтов вести одновременно")
+    parser.add_argument("--ai-html", action="store_true", default=True, help="писать парсер для HTML-сайтов моделью")
+    parser.add_argument("--no-ai-html", dest="ai_html", action="store_false")
+    parser.add_argument("--issue", action="store_true", help="завести issue с итогом прогона")
     parser.add_argument("--out", default="")
     args = parser.parse_args(argv)
 
@@ -473,16 +596,20 @@ def main(argv: list[str]) -> None:
         return
 
     rows = []
-    for index, url in enumerate(urls, 1):
-        print(f"\n[{index}/{len(urls)}]")
-        try:
-            rows.append(process_site(url, args))
-        except KeyboardInterrupt:
-            break
-        except Exception as exc:  # один сайт не должен валить прогон
-            rows.append({"url": url, "status": f"сбой: {exc}"})
-        if index < len(urls):
-            time.sleep(args.pause)
+    if args.jobs > 1:
+        # Пока один сайт ждёт CI, второй уже генерируется; стенд всё равно
+        # идёт по одному — устройство одно.
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+            for row in pool.map(lambda item: _safe_process(item, args), urls):
+                rows.append(row)
+    else:
+        for index, url in enumerate(urls, 1):
+            print(f"\n[{index}/{len(urls)}]")
+            rows.append(_safe_process(url, args))
+            if index < len(urls):
+                time.sleep(args.pause)
 
     REPORTS.mkdir(exist_ok=True)
     out_path = Path(args.out) if args.out else REPORTS / f"pipe-{int(time.time())}.json"
@@ -492,6 +619,8 @@ def main(argv: list[str]) -> None:
     for row in rows:
         print(f"  {row.get('status', '?'):22} {row.get('kind', ''):9} {row.get('url', '')}")
     print(f"\nотчёт: {out_path}")
+    if args.issue:
+        _file_issue(rows, out_path)
 
 
 if __name__ == "__main__":

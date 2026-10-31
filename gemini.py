@@ -4,6 +4,9 @@
 Принцип: детерминированный код делает всё, что может. Модель зовётся в трёх
 случаях — неоднозначный тип сайта, неизвестный селектор, неизвестная ошибка
 сборки. Каждый ответ кешируется, поэтому повторная ошибка денег не стоит.
+
+Транспорт — curl: он умеет socks5, а VPS ходит в Google только через VPN
+(напрямую отвечает «User location is not supported»).
 """
 
 from __future__ import annotations
@@ -11,6 +14,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
+import socket
+import subprocess
 import time
 import urllib.error
 import urllib.request
@@ -18,16 +24,20 @@ from pathlib import Path
 
 FORGE_ROOT = Path(__file__).resolve().parent
 CACHE_DIR = FORGE_ROOT / "knowledge" / "ai_cache"
-MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-FALLBACK_MODEL = "gemini-2.0-flash"
-ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+# Порядок важен: первый рабочий и используется. 3.8-flash отвечает 503 под
+# нагрузкой, 2.5-flash закрыт для новых ключей.
+MODELS = [m.strip() for m in os.environ.get(
+    "GEMINI_MODELS", "gemini-3-flash-preview,gemini-flash-lite-latest,gemini-3.8-flash"
+).split(",") if m.strip()]
 MAX_CALLS = int(os.environ.get("GEMINI_MAX_CALLS", "40"))
 
 _calls = 0
+_cooldown: dict[str, float] = {}
 
 
 def api_key() -> str:
-    """Ключ: переменная окружения, затем файлы рядом с генератором."""
     for name in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
         value = os.environ.get(name, "").strip()
         if value:
@@ -42,6 +52,26 @@ def api_key() -> str:
     return ""
 
 
+def _port_open(host: str, port: int) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=1.5):
+            return True
+    except OSError:
+        return False
+
+
+def proxy() -> str:
+    """Прокси для Google: явный GEMINI_PROXY или локальный socks от VPN."""
+    explicit = os.environ.get("GEMINI_PROXY", "").strip()
+    if explicit:
+        return explicit
+    if os.environ.get("GEMINI_DIRECT") == "1":
+        return ""
+    if _port_open("127.0.0.1", 1080):
+        return "socks5h://127.0.0.1:1080"
+    return ""
+
+
 def available() -> bool:
     return bool(api_key())
 
@@ -49,23 +79,58 @@ def available() -> bool:
 def status() -> str:
     if not available():
         return "Gemini: ключа нет — работаю только на правилах"
-    return f"Gemini: {MODEL}, вызовов в этом прогоне {_calls}/{MAX_CALLS}"
+    path = proxy() or "напрямую"
+    return f"Gemini: {MODELS[0]} через {path}, вызовов {_calls}/{MAX_CALLS}"
 
 
 def _cache_path(prompt: str) -> Path:
-    digest = hashlib.sha256((MODEL + "\x00" + prompt).encode("utf-8")).hexdigest()
+    digest = hashlib.sha256((MODELS[0] + "\x00" + prompt).encode("utf-8")).hexdigest()
     return CACHE_DIR / f"{digest}.json"
 
 
-def _post(model: str, key: str, payload: dict) -> dict:
-    request = urllib.request.Request(
-        ENDPOINT.format(model=model, key=key),
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(request, timeout=90) as response:
-        return json.loads(response.read().decode("utf-8"))
+def _post(model: str, key: str, payload: dict, timeout: int = 120) -> dict:
+    url = ENDPOINT.format(model=model) + "?key=" + key
+    body = json.dumps(payload).encode("utf-8")
+    use_proxy = proxy()
+
+    if use_proxy and shutil.which("curl"):
+        command = ["curl", "-sS", "--max-time", str(timeout), "--proxy", use_proxy,
+                   "-X", "POST", "-H", "Content-Type: application/json",
+                   "--data-binary", "@-", url]
+        result = subprocess.run(command, input=body, capture_output=True)
+        raw = result.stdout.decode("utf-8", "replace")
+    else:
+        request = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+        opener = urllib.request.urlopen
+        if use_proxy:
+            handlers = []
+            if use_proxy.startswith("socks"):
+                try:
+                    import socks  # PySocks
+                    import sockshandler
+
+                    host, port = use_proxy.split("://", 1)[1].split(":")
+                    handlers.append(sockshandler.SocksiPyHandler(socks.SOCKS5, host, int(port), True))
+                except ImportError:
+                    pass
+            if handlers:
+                opener = urllib.request.build_opener(*handlers).open
+        with opener(request, timeout=timeout) as response:
+            raw = response.read().decode("utf-8", "replace")
+
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return {"error": {"message": raw[:200]}}
+    return data
+
+
+def _text_from(data: dict) -> str:
+    candidates = data.get("candidates") or []
+    if not candidates:
+        return ""
+    parts = (candidates[0].get("content") or {}).get("parts") or []
+    return "".join(part.get("text", "") for part in parts).strip()
 
 
 def ask(prompt: str, *, max_tokens: int = 1200, temperature: float = 0.2, use_cache: bool = True) -> str:
@@ -88,39 +153,56 @@ def ask(prompt: str, *, max_tokens: int = 1200, temperature: float = 0.2, use_ca
 
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens},
+        "generationConfig": {
+            "temperature": temperature,
+            "maxOutputTokens": max_tokens,
+            "thinkingConfig": {"thinkingBudget": 0},
+        },
     }
-    text = ""
-    for model in (MODEL, FALLBACK_MODEL):
-        try:
-            _calls += 1
-            data = _post(model, key, payload)
-            candidates = data.get("candidates") or []
-            if not candidates:
-                continue
-            parts = (candidates[0].get("content") or {}).get("parts") or []
-            text = "".join(part.get("text", "") for part in parts).strip()
-            if text:
-                break
-        except urllib.error.HTTPError as exc:
-            # 400/403 — ключ или модель; 429 — квота. Второй раз не пробуем.
-            print(f"  ⚠ Gemini {model}: HTTP {exc.code}")
-            if exc.code in (400, 403, 429):
-                return ""
-        except Exception as exc:  # сеть, таймаут
-            print(f"  ⚠ Gemini {model}: {exc}")
-            continue
 
-    if text and use_cache:
-        try:
-            CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            cache_file.write_text(
-                json.dumps({"ts": int(time.time()), "model": MODEL, "text": text}, ensure_ascii=False),
-                encoding="utf-8",
-            )
-        except OSError:
-            pass
-    return text
+    for model in MODELS:
+        if _cooldown.get(model, 0) > time.time():
+            continue
+        for attempt in range(2):
+            try:
+                _calls += 1
+                data = _post(model, key, payload)
+            except Exception as exc:
+                print(f"  ⚠ Gemini {model}: {str(exc)[:80]}")
+                break
+
+            text = _text_from(data)
+            candidate = (data.get("candidates") or [{}])[0]
+            if not text and candidate.get("finishReason") == "MAX_TOKENS" and attempt == 0:
+                payload["generationConfig"]["maxOutputTokens"] = min(4096, max_tokens * 3)
+                continue
+            if text:
+                if use_cache:
+                    try:
+                        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                        cache_file.write_text(
+                            json.dumps({"ts": int(time.time()), "model": model, "text": text}, ensure_ascii=False),
+                            encoding="utf-8",
+                        )
+                    except OSError:
+                        pass
+                return text
+
+            error = (data.get("error") or {})
+            message = str(error.get("message", ""))
+            if error.get("code") == 429 or "quota" in message.lower():
+                # Квота на модель кончилась: минуту к ней не ходим.
+                _cooldown[model] = time.time() + 120
+                break
+            # 503 — перегрузка: одна пауза, потом следующая модель.
+            if "high demand" in message or error.get("code") == 503:
+                if attempt == 0:
+                    time.sleep(3)
+                    continue
+                break
+            print(f"  ⚠ Gemini {model}: {message[:90]}")
+            break
+    return ""
 
 
 def ask_json(prompt: str, *, max_tokens: int = 1200) -> dict:

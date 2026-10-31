@@ -14,6 +14,7 @@
   forge watch                  — прогнать сторож по зарегистрированным расширениям
   forge audit [аргументы]      — прогнать стенд (Frida) по расширениям
   forge pipe <url|файл>        — конвейер: сайт → расширение → сборка → стенд → правки
+  forge drift <target> <name>  — сайт изменился? перегенерировать модуль
 """
 
 from __future__ import annotations
@@ -1728,6 +1729,42 @@ def cmd_classify(args: list[str]) -> None:
         print(_json.dumps(conveyor.classify(url), ensure_ascii=False))
 
 
+def cmd_drift(args: list[str]) -> None:
+    """Сверяет декларацию с живым сайтом: изменилась структура — перегенерируем."""
+    if len(args) < 2:
+        sys.exit("Использование: forge.py drift <mihon|aniyomi|lnreader> <site_id>")
+    kind, site_id = args[0], args[1]
+    spec_path = SITES_DIR / f"{site_id}.yaml"
+    if not spec_path.exists():
+        sys.exit(f"Нет декларации: {spec_path}")
+
+    site = SiteSpec.from_yaml(spec_path)
+    import recon
+
+    fresh = recon.profile(site.base_url)
+    if fresh.get("error"):
+        sys.exit(f"✖ сайт не отвечает: {fresh['error']}")
+
+    diffs = []
+    for label, old_value, new_value in (
+        ("api.base", site.api.get("base"), fresh.get("base")),
+        ("api.list_path", site.api.get("list_path"), fresh.get("list_path")),
+        ("kind", {"mihon": "mihon", "aniyomi": "aniyomi", "lnreader": "lnreader"}.get(site.kind), fresh.get("kind")),
+    ):
+        if old_value and new_value and old_value != new_value:
+            diffs.append(f"{label}: {old_value} → {new_value}")
+
+    if not diffs:
+        print(f"✔ {site_id}: структура та же")
+        return
+
+    print(f"→ {site_id}: сайт изменился")
+    for line in diffs:
+        print(f"  {line}")
+    print("  перегенерирую модуль")
+    cmd_add([site.base_url, "--force"])
+
+
 COMMANDS = {
     "add": cmd_add,
     "generate": cmd_generate,
@@ -1739,6 +1776,7 @@ COMMANDS = {
     "stand": cmd_audit,
     "pipe": cmd_pipe,
     "classify": cmd_classify,
+    "drift": cmd_drift,
 }
 
 

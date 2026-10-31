@@ -3,3 +3,4 @@ __pycache__/
 knowledge/ai_cache/
 reports/
 .gemini_key
+replay/
