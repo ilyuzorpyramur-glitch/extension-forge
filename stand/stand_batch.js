@@ -1141,7 +1141,19 @@ function stepSearch(next) {
         var emptyFilters = null;
         try { emptyFilters = src.getFilterList(); } catch (e) { emptyFilters = null; }
         if (emptyFilters === null) { add("search", true, "не проверить"); next(); return; }
-        var finishSearch = function (items, urlText) {
+        // Запасной запрос: у сайтов с точным совпадением полное название с
+        // пунктуацией даёт ноль результатов, а слова — находят.
+        // Одно слово, самое длинное: DLE ищет по всем словам сразу и на
+        // фразе из трёх слов выдаёт пусто.
+        var altQuery = probeWords.slice().sort(function (a, b) { return b.length - a.length; })[0] || "";
+        var retried = false;
+        var finishSearch = function (items, urlText, queryUsed) {
+            if (items.length === 0 && !retried && altQuery && altQuery !== queryUsed) {
+                // Сайт мог не найти полное название — пробуем словами, один раз.
+                retried = true;
+                runQuery(altQuery);
+                return;
+            }
             var hits = 0;
             items.forEach(function (a) {
                 var low = titleOf(a).toLowerCase();
@@ -1152,21 +1164,24 @@ function stepSearch(next) {
             var ratio = items.length === 0 ? 0 : hits / items.length;
             var sample = items.slice(0, 3).map(titleOf);
             add("search", items.length > 0 && ratio >= 0.4,
-                { total: items.length, relevant: hits, url: urlText, sample: sample });
+                { total: items.length, relevant: hits, url: urlText, query: queryUsed, sample: sample });
+            next();
         };
-        var req = null;
-        try { req = invoke(src, "searchAnimeRequest", [1, query, emptyFilters]); } catch (eReq) { req = null; }
-        if (req !== null) {
-            var resp = src.getClient().newCall(req).execute();
-            finishSearch(animesOf(invoke(src, "searchAnimeParse", [resp])), String(req.url()).slice(0, 90));
-            next();
-            return;
-        }
-        // Источник на suspend-API: searchAnimeRequest — заглушка, идём через getSearchAnime.
-        callAny(src, "getSearchAnime", [1, query, emptyFilters], 25000, function (page2) {
-            finishSearch(animesOf(page2), "getSearchAnime");
-            next();
-        }, function (errS) { add("search", false, String(errS).slice(0, 80)); next(); });
+        var runQuery = function (q) {
+            var req = null;
+            try { req = invoke(src, "searchAnimeRequest", [1, q, emptyFilters]); } catch (eReq) { req = null; }
+            if (req !== null) {
+                var resp = src.getClient().newCall(req).execute();
+                finishSearch(animesOf(invoke(src, "searchAnimeParse", [resp])), String(req.url()).slice(0, 90), q);
+                return;
+            }
+            // Источник на suspend-API: searchAnimeRequest — заглушка, идём через getSearchAnime.
+            callAny(src, "getSearchAnime", [1, q, emptyFilters], 25000, function (page2) {
+                finishSearch(animesOf(page2), "getSearchAnime", q);
+            }, function (errS) { add("search", false, String(errS).slice(0, 80)); next(); });
+        };
+        runQuery(query);
+        return;
     } catch (e) { add("search", false, String(e).slice(0, 80)); }
     next();
 }
@@ -1199,6 +1214,7 @@ function stepSearch(next) {
                 var total = 0;
                 try { total = list.size(); } catch (e) { total = -1; }
                 var sample = [];
+                var media = 0;
                 for (var j = 0; j < total && j < 3; j++) {
                     var q = "", u = "";
                     try {
@@ -1206,9 +1222,17 @@ function stepSearch(next) {
                         q = String(v.getQuality());
                         u = String(v.getVideoUrl());
                     } catch (e) { q = "?"; u = String(e); }
+                    // Ссылка на страницу плеера — это не видео: приложение её
+                    // не проиграет, поэтому такие «видео» не считаем успехом.
+                    if (/\.(mp4|m3u8|webm)(\?|$)/i.test(u)) media++;
                     sample.push(q + "|" + u.substring(0, 45));
                 }
-                add("video", true, { count: total, sample: sample });
+                if (total > 0 && media === 0) {
+                    add("video", false, { count: total, media: 0, sample: sample,
+                        note: "плеер вернул страницу, а не медиа-ссылку" });
+                } else {
+                    add("video", true, { count: total, media: media, sample: sample });
+                }
                 next();
             };
             var fail = function (err) {

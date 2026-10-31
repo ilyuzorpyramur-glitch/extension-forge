@@ -107,7 +107,7 @@ class @@CLASS@@ :
                 val body = match.groupValues[2]
                 SAnime.create().apply {
                     url = path
-                    title = cleanTitle(textOf(body)).ifBlank { altOf(body) }
+                    title = titleOfCard(body)
                     thumbnail_url = imageOf(body)?.let(::absoluteUrl)
                     initialized = false
                 }
@@ -121,6 +121,27 @@ class @@CLASS@@ :
     }
 
     private fun pageOf(url: String): Int = Regex("""(?:page/|page=|/)(\\d+)""").find(url)?.groupValues?.get(1)?.toIntOrNull() ?: 1
+
+    /** Заголовок карточки: alt картинки, вложенный .title, и только потом текст.
+     *
+     *  У DLE в тело ссылки попадают счётчики («14736 просмотров 28 9 12+»),
+     *  поэтому текст берём последним и чистим от цифр статистики.
+     */
+    private fun titleOfCard(body: String): String {
+        val alt = altOf(body).trim()
+        if (alt.isNotEmpty()) return cleanTitle(alt)
+        val nested = Regex(
+            """<(?:h1|h2|h3|div|span)[^>]*class="[^"]*(?:title|name)[^"]*"[^>]*>(.*?)</""",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
+        ).find(body)?.groupValues?.get(1)
+        if (nested != null) {
+            val clean = cleanTitle(textOf(nested))
+            if (clean.isNotBlank()) return clean
+        }
+        return cleanTitle(textOf(body))
+            .replace(Regex("""\s*\d+\s*просмотров.*""", RegexOption.IGNORE_CASE), "")
+            .trim()
+    }
 
     private fun textOf(fragment: String): String = Jsoup.parse(fragment).text()
 
@@ -157,6 +178,15 @@ class @@CLASS@@ :
                 ?.let(::absoluteUrl)
             description = metaOf(doc, "og:description")
                 ?: doc.selectFirst(DESC_SELECTOR)?.text()?.takeIf { it.length > 80 }
+            // Своего поля «статус» у DLE нет, но есть «Эпизоды: 5 из 12».
+            // Это факт со страницы: вышло меньше — онгоинг, все — завершён.
+            val pageText = doc.text()
+            val episodes = Regex("""Эпизоды:\s*(\d+)\s*из\s*(\d+)""").find(pageText)
+            status = when {
+                episodes == null -> SAnime.UNKNOWN
+                episodes.groupValues[1] == episodes.groupValues[2] -> SAnime.COMPLETED
+                else -> SAnime.ONGOING
+            }
             genre = doc.select(GENRE_SELECTOR).map { it.text().trim() }
                 .filter { it.isNotEmpty() && it.length < 24 }
                 .distinct()
@@ -285,20 +315,26 @@ class @@CLASS@@ :
         videos
     }
 
-    /** Не-Kodik плееры (Alloha и подобные) обычно кладут ссылку прямо в разметку. */
+    /** Не-Kodik плееры обычно кладут ссылки прямо в разметку.
+     *
+     *  Часто это строка вида «[HD (720p)]https://...mp4,[SD]https://...mp4»,
+     *  поэтому берём пары «метка + адрес» и обрезаем адрес по расширению:
+     *  иначе в url попадает «,[SD (480p)]https://...» и видео не играет.
+     */
     private fun directVideos(player: String): List<Video> = runCatching {
         val page = client.newCall(GET(player, playerHeaders())).execute().use { it.bodyString() }
         val decoded = ATOB_REGEX.find(page)?.groupValues?.get(1)?.let(::decodePlaylist).orEmpty()
-        val plain = Regex("""https?://[^"'\\s]+\.(?:m3u8|mp4)[^"'\\s]*""")
-            .findAll(page)
-            .map { it.value.replace("""\/""", "/") }
-            .toList()
-        val links = decoded.toMutableList()
-        plain.forEachIndexed { index, url ->
-            links += Video(url, "Видео " + (index + 1), url, headers = playerHeaders())
-        }
-        Log.e("Amedia", "direct links=" + links.size)
-        links.distinctBy { it.videoUrl }
+
+        val labeled = LABELED_URL.findAll(page).map { match ->
+            Video(match.groupValues[2], match.groupValues[1].trim(), player, headers = playerHeaders())
+        }.toList()
+
+        val plain = PLAIN_URL.findAll(page).map { match ->
+            Video(match.value, "Видео", player, headers = playerHeaders())
+        }.toList()
+
+        Log.e("Amedia", "direct links=" + (decoded.size + labeled.size + plain.size))
+        (decoded + labeled + plain).distinctBy { it.videoUrl }
     }.getOrElse {
         Log.e("Amedia", "direct error", it)
         emptyList()
@@ -348,7 +384,20 @@ class @@CLASS@@ :
         private const val RELAY_URL = "@@RELAY@@"
         private const val MAX_SLOTS = 4
         private const val PLAYER_MODE = "@@PLAYER_MODE@@"
-        private val IFRAME_REGEX = Regex("""<iframe[^>]*src="([^"]+)"""", RegexOption.IGNORE_CASE)
+        // Плеер лежит либо в <iframe src>, либо в data-iframe у кнопки серии.
+        // «[HD (720p)]https://host/video/720/1.mp4» — метка и адрес.
+        private val LABELED_URL = Regex(
+            """\[([^\]\[]{2,24})\]\s*(https?://[^"'\s,\]]+?\.(?:m3u8|mp4))""",
+            RegexOption.IGNORE_CASE,
+        )
+        private val PLAIN_URL = Regex(
+            """https?://[^"'\s,\]]+?\.(?:m3u8|mp4)""",
+            RegexOption.IGNORE_CASE,
+        )
+        private val IFRAME_REGEX = Regex(
+            """(?:<iframe[^>]*src="|data-iframe=")([^"]+)"""",
+            RegexOption.IGNORE_CASE,
+        )
         private val ATOB_REGEX = Regex("""file:\s*atob\("([^"]+)"\)""")
         private val PLAYLIST_ITEM_REGEX = Regex("""\[([^\]]+)](https?://\S+)""")
 
@@ -418,11 +467,11 @@ def preflight(site, cfg: dict) -> str:
                           "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
         },
     )
-    try:
-        with urllib.request.urlopen(request, timeout=25) as resp:
-            html = resp.read().decode("utf-8", "replace")
-    except Exception as exc:
-        return f"каталог недоступен: {str(exc)[:60]}"
+    import recon
+
+    status, html = recon.fetch_html(url)
+    if status != 200 or not html:
+        return f"каталог недоступен: HTTP {status}"
 
     try:
         pattern = re.compile(str(cfg["link_re"]))
@@ -461,7 +510,11 @@ def render(site, repo: Path) -> None:
     cls = _class_name(display_name)
     host = site.base_url.split("//", 1)[-1].split("/")[0]
 
-    version = site.ext_version_code or 1
+    # Версия обязана расти: иначе APK публикуется под тем же именем и стенд
+    # (как и приложение) видит старый файл.
+    import forge
+
+    version = site.ext_version_code or forge._next_version_code(module)
     (module / "build.gradle").write_text(
         GRADLE_TEMPLATE.format(name=display_name, cls=cls, version=version, nsfw=str(site.nsfw).lower()),
         encoding="utf-8",

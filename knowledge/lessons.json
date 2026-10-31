@@ -76,8 +76,8 @@
   "fix": "мультивыбор в одном параметре + подключение к запросу",
   "kind": "aniyomi",
   "site": "animaunt",
-  "hits": 1,
-  "ts": 1793473870
+  "hits": 5,
+  "ts": 1793476262
  },
  {
   "sig": "search: total :# relevant :# url : https: animaunt org index php do search sample :",
@@ -98,5 +98,45 @@
   "site": "animaunt",
   "hits": 1,
   "ts": 1793473870
+ },
+ {
+  "sig": "status: value :#",
+  "step": "status",
+  "cause": "статус не определяется",
+  "fix": "взять из поля сайта (год окончания/статус)",
+  "kind": "aniyomi",
+  "site": "animaunt",
+  "hits": 3,
+  "ts": 1793475883
+ },
+ {
+  "sig": "search: total :# relevant :# url : https: animaunt org index php do search query : # просмотров sample :",
+  "step": "search",
+  "cause": "поиск не находит",
+  "fix": "эндпоинт/параметр поиска, пустой запрос = каталог",
+  "kind": "aniyomi",
+  "site": "animaunt",
+  "hits": 1,
+  "ts": 1793475181
+ },
+ {
+  "sig": "video: java lang exception: плеер не вернул видео fetchvideolist: error: причина: error: java lang reflect invocationtargetexce",
+  "step": "video",
+  "cause": "видео не играет",
+  "fix": "цепочка хост→плеер: id, а не content_id; заголовки",
+  "kind": "aniyomi",
+  "site": "animaunt",
+  "hits": 2,
+  "ts": 1793475568
+ },
+ {
+  "sig": "search: total :# relevant :# url : https: animaunt org index php do search query : просмотров sample :",
+  "step": "search",
+  "cause": "поиск не находит",
+  "fix": "эндпоинт/параметр поиска, пустой запрос = каталог",
+  "kind": "aniyomi",
+  "site": "animaunt",
+  "hits": 2,
+  "ts": 1793475883
  }
 ]

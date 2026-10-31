@@ -1267,12 +1267,20 @@ def _stable_source_id(site: SiteSpec) -> int:
 
 
 def _next_version_code(module: Path) -> int:
-    """versionCode существующего модуля + 1 (иначе 1)."""
-    gradle = module / "build.gradle.kts"
-    if not gradle.exists():
-        return 1
-    match = re.search(r"versionCode\s*=\s*(\d+)", gradle.read_text(encoding="utf-8"))
-    return int(match.group(1)) + 1 if match else 1
+    """versionCode существующего модуля + 1 (иначе 1).
+
+    Legacy-модули Aniyomi держат версию в build.gradle как extVersionCode —
+    без этого новая сборка публиковалась под старым именем APK.
+    """
+    for name in ("build.gradle.kts", "build.gradle"):
+        gradle = module / name
+        if not gradle.exists():
+            continue
+        text = gradle.read_text(encoding="utf-8")
+        match = re.search(r"(?:extVersionCode|versionCode)\s*=?\s*(\d+)", text)
+        if match:
+            return int(match.group(1)) + 1
+    return 1
 
 
 def _render_quality_prefs(site: SiteSpec, kind: str) -> tuple[str, str, str]:
@@ -1294,6 +1302,20 @@ def _render_quality_prefs(site: SiteSpec, kind: str) -> tuple[str, str, str]:
 
 def render_aniyomi(site: SiteSpec) -> None:
     """JSON-API-сайты идут через отдельный рендерер, остальные — по старому шаблону."""
+    if site.kind == "aniyomi" and str(site.api_style or "").lower() in ("", "html"):
+        # DLE узнаём по вёрстке и сразу заполняем конфиг: это предсказуемый
+        # парсер вместо свободного кода модели.
+        import dledetect
+        import recon
+
+        html = recon.fetch_html(site.base_url)[1]
+        if dledetect.is_dle(html):
+            cfg = dledetect.config(site.base_url, site.kind)
+            if cfg:
+                site.api = {"html": cfg}
+                site.api_style = "dle"
+                print("  DLE-сайт: конфиг собран из вёрстки")
+
     if str(site.api_style or "").startswith("dle"):
         import forge_aniyomi_dle
 

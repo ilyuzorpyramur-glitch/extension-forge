@@ -45,6 +45,7 @@ REPOS = {
 }
 LESSONS = FORGE_ROOT / "knowledge" / "lessons.json"
 BEST = FORGE_ROOT / "knowledge" / "best.json"
+BLOCKED = FORGE_ROOT / "knowledge" / "blocked.json"
 FAILS = FORGE_ROOT / "knowledge" / "fails.json"
 QUARANTINE = FORGE_ROOT / "sites" / "quarantine.yaml"
 REPLAY = FORGE_ROOT / "replay"
@@ -308,6 +309,9 @@ def _stand_locked(kind: str, site_id: str, title_url: str = "") -> dict:
     proxy = os.environ.get("STAND_PROXY_ADDR", "127.0.0.1:1083")
     if not _proxy_alive(proxy):
         proxy = ""
+    # Сайт, который уже показал заглушку провайдера, проверяем сразу через
+    # прокси: иначе первый прогон тратит время и падает на сети.
+    known_blocked = site_id in _load_map(BLOCKED)
     # Стенд читает локальный индекс: подтягиваем свежий.
     buildwatch.sh(["git", "-C", str(repo), "fetch", "-q", "origin"])
     buildwatch.sh(["git", "-C", str(repo), "pull", "--rebase", "-q", "origin", "main"])
@@ -320,6 +324,15 @@ def _stand_locked(kind: str, site_id: str, title_url: str = "") -> dict:
         cmd += ["--title-url", title_url]
     env = dict(os.environ, STAND_REPO=str(repo))
     code, out = run(cmd, timeout=900, env=env)
+    if proxy and known_blocked:
+        print(f"  → {site_id}: сайт помечен как заблокированный, сразу через прокси")
+        _device_proxy(proxy)
+        env["STAND_PROXY"] = proxy
+        try:
+            run(cmd, timeout=900, env=env)
+        finally:
+            _device_proxy_off()
+
     try:
         rows = json.loads(Path(out_path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -342,6 +355,10 @@ def _stand_locked(kind: str, site_id: str, title_url: str = "") -> dict:
                 pass
         finally:
             _device_proxy_off()
+    if row.get("passed", 0) > 0:
+        data = _load_map(BLOCKED)
+        if data.pop(site_id, None) is not None:
+            _save_map(BLOCKED, data)
     return row
 
 
