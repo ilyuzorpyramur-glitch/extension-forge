@@ -1,0 +1,40 @@
+# SHIZA — shiza-project.com (разведка https://shiza-project.com)
+id: shizaproject
+kind: aniyomi
+name: "SHIZA"
+base_url: https://shiza-project.com
+lang: ru
+api_style: html
+nsfw: false
+rating: safe
+
+html:
+  rate: 3
+  list:
+    path: "/"            # TODO: страница каталога/популярного, если не "/"
+    latest_path: "/"      # TODO: страница последних обновлений
+    search_path: ""       # TODO: например "/search?q={query}"
+    items: "a[href*=\"/releases/\"]"
+    link: "a[href*=\"/releases/\"]"
+    cover: "img"
+    has_next: ""          # TODO: селектор кнопки "далее", если список постраничный
+  details:
+    title: { selector: "h1" }   # TODO: проверить на странице тайтла
+    cover: ".cover img, .poster img"
+    description: { selector: ".description" }
+    genres: { selector: ".genres" }
+  chapters:
+    items: ".chapter-list a"   # TODO: селектор строки главы
+    link: "a"
+  pages:
+    images: ".reader img"      # TODO: селектор картинок читалки
+
+# найдено карточек: 40
+#   - 'Расписание' -> https://shiza-project.com/releases/schedule
+#   - 'Её друг' -> https://shiza-project.com/releases/@763828866341933056
+#   - 'Проект воспитания девочек-волшебниц: Перезагрузка' -> https://shiza-project.com/releases/@762955083758440448
+
+# TODO: это каркас, не готовое расширение. smartparse нашёл только карточки
+# списка (см. образцы выше) — селекторы деталей/глав/страниц надо
+# проверить на реальной странице тайтла и поправить руками, затем:
+#   python3 forge.py generate sites/shizaproject.yaml

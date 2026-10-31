@@ -1,0 +1,25 @@
+# Вход — smotret-anime.app (разведка https://smotret-anime.app)
+id: smotretanime
+kind: aniyomi
+name: "Вход"
+base_url: https://smotret-anime.app
+lang: ru
+api_style: json_api_v2
+nsfw: true
+rating: nsfw
+
+api:
+  base: "https://smotret-anime.app/api"
+  list:
+    path: "/series"
+    items: "data"
+    page_param: page
+    size_param: "per_page"
+    size: 20
+    query_param: "q"
+    fields:
+      id: id
+      title: title
+      genres: genres
+
+# TODO, не найдено автоматически: chapters, pages

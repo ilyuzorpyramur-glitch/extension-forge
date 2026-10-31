@@ -1,0 +1,15 @@
+id: doramru
+kind: aniyomi
+name: "Doram Ru"
+base_url: https://doram-ru.org
+lang: ru
+api_style: dle
+nsfw: false
+api:
+  html:
+    catalog: "/"
+    latest: "/"
+    link_re: "/\\d+[^\"']+\\.html"
+    title_sel: "h1"
+    genre_sel: "a[href*='/genre/']"
+  player_mode: iframe

@@ -203,6 +203,43 @@ def bump_extension(site: SiteSpec) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _icon_colors(site_id: str) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+    """Стабильные цвета по имени модуля: одна и та же иконка при перегенерации."""
+    seed = sum((i + 1) * ord(ch) for i, ch in enumerate(site_id))
+    hue = seed % 360
+    fg = _hsl_to_rgb(hue, 0.62, 0.62)
+    bg = _hsl_to_rgb(hue, 0.45, 0.16)
+    return fg, bg
+
+
+def _hsl_to_rgb(h: int, sat: float, light: float) -> tuple[int, int, int]:
+    c = (1 - abs(2 * light - 1)) * sat
+    x = c * (1 - abs((h / 60) % 2 - 1))
+    m = light - c / 2
+    rgb = {
+        0: (c, x, 0), 1: (x, c, 0), 2: (0, c, x),
+        3: (0, x, c), 4: (x, 0, c), 5: (c, 0, x),
+    }[int(h // 60) % 6]
+    return tuple(int(round((v + m) * 255)) for v in rgb)  # type: ignore[return-value]
+
+
+def ensure_icon_entry(site: SiteSpec) -> bool:
+    """Дописывает запись в make-icons.py, если модуля там ещё нет."""
+    repo = REPOS[site.kind]
+    script = repo / ".github" / "scripts" / "make-icons.py"
+    if not script.exists():
+        return False
+    text = script.read_text()
+    if f'"{site.site_id}":' in text or "ICONS = {" not in text:
+        return True
+
+    mono = monogram(site.name or site.site_id)[:3].upper()
+    fg, bg = _icon_colors(site.site_id)
+    entry = f'    "{site.site_id}": ("{mono}", {fg}, {bg}),\n'
+    script.write_text(text.replace("ICONS = {\n", "ICONS = {\n" + entry, 1))
+    return True
+
+
 def generate_icons(site: SiteSpec) -> list[Path]:
     """Использует проверенный make-icons.py целевого репозитория."""
     repo = REPOS[site.kind]
@@ -224,6 +261,46 @@ def generate_icons(site: SiteSpec) -> list[Path]:
 # ---------------------------------------------------------------------------
 # Генерация: mihon
 # ---------------------------------------------------------------------------
+
+
+def clean_kotlin(code: str) -> str:
+    """Приводит сгенерированный код к тому, что требует spotless/ktlint.
+
+    Главная беда — пробелы в конце строк (в том числе внутри KDoc): ktlint
+    считает это нарушением и валит сборку всего репозитория.
+    """
+    lines = [line.rstrip() for line in code.splitlines()]
+    lines = _join_short_bodies(lines)
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _join_short_bodies(lines: list[str], limit: int = 140) -> list[str]:
+    """ktlint требует однострочное тело, если выражение влезает в лимит строки.
+
+    Генератор пишет `= \n GET(...)` всегда, а проверка форматирования такое
+    не пропускает — поэтому склеиваем обратно там, где есть место. Комментарии
+    и пустые строки не трогаем: раньше склейка съедала разделители секций.
+    """
+    out: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        stripped = line.lstrip()
+        if (
+            line.rstrip().endswith("=")
+            and not stripped.startswith("//")
+            and index + 1 < len(lines)
+        ):
+            tail = lines[index + 1].strip()
+            if tail and not tail.startswith("//") and not tail.endswith("{"):
+                candidate = line.rstrip() + " " + tail
+                if len(candidate) <= limit:
+                    out.append(candidate)
+                    index += 2
+                    continue
+        out.append(line)
+        index += 1
+    return out
 
 
 def format_kotlin(path: Path) -> None:
@@ -306,7 +383,7 @@ def render_mihon_html(site: SiteSpec) -> None:
     _write_gradle(module, site, version_code, source_id)
     code = mihon_html.render(site, pkg, cls, host)
     target = pkg_dir / f"{cls}.kt"
-    target.write_text(code, encoding="utf-8")
+    target.write_text(clean_kotlin(code), encoding="utf-8")
     format_kotlin(target)
     generate_icons(site)
 
@@ -1213,6 +1290,19 @@ def _render_quality_prefs(site: SiteSpec, kind: str) -> tuple[str, str, str]:
 
 
 def render_aniyomi(site: SiteSpec) -> None:
+    """JSON-API-сайты идут через отдельный рендерер, остальные — по старому шаблону."""
+    if str(site.api_style or "").startswith("dle"):
+        import forge_aniyomi_dle
+
+        forge_aniyomi_dle.render(site, REPOS["aniyomi"])
+        return
+
+    if site.api and str(site.api_style).startswith("json"):
+        import forge_aniyomi_api
+
+        forge_aniyomi_api.render(site, REPOS["aniyomi"])
+        return
+
     repo = REPOS["aniyomi"]
     module = repo / "src" / site.lang / site.site_id
     pkg_dir = module / "src" / "eu" / "kanade" / "tachiyomi" / "animeextension" / site.lang / site.site_id
@@ -1461,6 +1551,58 @@ def cmd_add(args: list[str]) -> None:
     cmd_generate([str(spec_path)])
 
 
+def validate_generated(site: SiteSpec) -> list[str]:
+    """Проверяет, что из генератора вышел рабочий модуль, а не скелет.
+
+    Сборка идёт только в CI, поэтому дешёвые проверки делаем здесь: иначе
+    каждый недоделанный модуль съедает прогон и ломает индекс репозитория.
+    """
+    repo = REPOS[site.kind]
+    module = repo / "src" / site.lang / site.site_id
+    if site.kind == "lnreader":
+        files = list((repo / "plugins").rglob(f"{site.site_id}.ts"))
+    else:
+        files = list(module.rglob("*.kt"))
+
+    problems: list[str] = []
+
+    # Сайт без найденного API: модуль соберётся, но каталог всегда будет пустым.
+    if site.kind == "aniyomi" and str(site.api_style).startswith("json"):
+        api = site.api or {}
+        list_cfg = api.get("list") or {}
+        if not str(list_cfg.get("path") or "").strip():
+            problems.append("пустая карта API: не найден список тайтлов")
+        if not str(api.get("base") or api.get("prefix") or "").strip():
+            problems.append("пустая карта API: не найден адрес API")
+
+    if not files:
+        return problems + ["нет исходников"]
+
+    for path in files:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        name = path.name
+        if "TODO(" in text:
+            problems.append(f"{name}: остались TODO")
+        if "@@" in text:
+            problems.append(f"{name}: незаполненные подстановки")
+        if text.count("{") != text.count("}"):
+            problems.append(f"{name}: несбалансированные скобки")
+        for number, line in enumerate(text.splitlines(), 1):
+            if line != line.rstrip():
+                problems.append(f"{name}:{number}: пробелы в конце строки")
+                break
+            if len(line) > 140:
+                problems.append(f"{name}:{number}: строка длиннее 140 символов")
+                break
+        if "\t" in text:
+            problems.append(f"{name}: табуляция")
+        # Заглушка «нет парсинга» — модуль соберётся, но не заработает.
+        if "Реализуйте" in text:
+            problems.append(f"{name}: заглушка вместо парсинга")
+
+    return sorted(set(problems))
+
+
 def cmd_generate(args: list[str]) -> None:
     if not args:
         sys.exit("Использование: forge.py generate <sites/example.yaml>")
@@ -1488,9 +1630,23 @@ def cmd_generate(args: list[str]) -> None:
             print(f"  ⚠ {warning}")
 
     register_extension(site)
+
+    problems = validate_generated(site)
+    try:
+        ensure_icon_entry(site)
+        generate_icons(site)
+        print("  ✔ иконка")
+    except Exception as exc:  # иконка не должна валить генерацию
+        problems.append(f"иконка: {exc}")
+
+    if problems:
+        print("⛔ СКЕЛЕТ (в репозиторий не годится):")
+        for item in problems[:6]:
+            print(f"  - {item}")
+        raise SystemExit(4)
+
     print(f"✔ Готово: {site.site_id}")
-    print(f"  Дальше: заполните TODO по селекторам из {spec_path},")
-    print(f"  затем git commit + push — CI соберёт APK и опубликует индекс.")
+    print("  Дальше: git commit + push — CI соберёт APK и опубликует индекс.")
 
 
 def cmd_bump(args: list[str]) -> None:

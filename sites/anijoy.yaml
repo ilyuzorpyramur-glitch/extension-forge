@@ -1,0 +1,38 @@
+id: anijoy
+kind: aniyomi
+name: AniJoy
+base_url: https://anijoy.ru
+lang: ru
+api_style: json_api
+notes: Каталог и серии — JSON API, плеер Kodik.
+api:
+  prefix: /api
+  catalog: /anime
+  page_param: page
+  limit_param: limit
+  sort_param: sort
+  search_param: search
+  per_page: 24
+  default_sort: popular
+  latest_sort: date
+  items: data.items
+  pagination: data.pagination
+  page_field: current_page
+  pages_field: total_pages
+  details: /anime/{id}
+  details_data: data
+  desc_field: description
+  genres_field: genres
+  status_field: status
+  episodes: /anime/{id}/episodes
+  episodes_items: data.episodes
+  ep_number: number
+  ep_title: title
+  ep_player: player_url
+  ep_date: release_date
+  id_field: id
+  title_field: title_ru
+  title_alt_field: title_original
+  poster_field: poster
+  poster_prefix: /uploads/
+  player: kodik

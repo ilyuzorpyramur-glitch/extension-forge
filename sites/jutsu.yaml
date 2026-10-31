@@ -1,0 +1,21 @@
+# JutSu — jut-su.works (разведка https://jut-su.works)
+id: jutsu
+kind: aniyomi
+name: "JutSu"
+base_url: https://jut-su.works
+lang: ru
+api_style: json_api_v2
+nsfw: false
+rating: safe
+
+api:
+  base: ""
+  list:
+    path: ""
+    items: ""
+    page_param: page
+    size_param: "per_page"
+    size: 20
+    query_param: "q"
+
+# TODO, не найдено автоматически: список тайтлов (попробуйте указать api.base и api.list.path вручную)

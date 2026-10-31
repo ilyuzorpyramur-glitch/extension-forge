@@ -1,0 +1,178 @@
+[
+  {
+    "id": "action",
+    "name": "Экшен"
+  },
+  {
+    "id": "adventure",
+    "name": "Приключения"
+  },
+  {
+    "id": "antropomorfizm",
+    "name": "Антропоморфизм"
+  },
+  {
+    "id": "avangard",
+    "name": "Авангард"
+  },
+  {
+    "id": "comedy",
+    "name": "Комедия"
+  },
+  {
+    "id": "detective",
+    "name": "Детектив"
+  },
+  {
+    "id": "detskoe",
+    "name": "Детское"
+  },
+  {
+    "id": "drama",
+    "name": "Драма"
+  },
+  {
+    "id": "etti",
+    "name": "Этти"
+  },
+  {
+    "id": "fantasy",
+    "name": "Фэнтези"
+  },
+  {
+    "id": "garem",
+    "name": "Гарем"
+  },
+  {
+    "id": "gonki",
+    "name": "Гонки"
+  },
+  {
+    "id": "gorodskoe-fentezi",
+    "name": "Городское фэнтези"
+  },
+  {
+    "id": "gurman",
+    "name": "Гурман"
+  },
+  {
+    "id": "historical",
+    "name": "Исторический"
+  },
+  {
+    "id": "horror",
+    "name": "Ужасы"
+  },
+  {
+    "id": "isekai",
+    "name": "Исекай"
+  },
+  {
+    "id": "korotkometrazhka",
+    "name": "Короткометражка"
+  },
+  {
+    "id": "kosmos",
+    "name": "Космос"
+  },
+  {
+    "id": "kultura-otaku",
+    "name": "Культура отаку"
+  },
+  {
+    "id": "medicina",
+    "name": "Медицина"
+  },
+  {
+    "id": "mifologiya",
+    "name": "Мифология"
+  },
+  {
+    "id": "military",
+    "name": "Военное"
+  },
+  {
+    "id": "music",
+    "name": "Музыка"
+  },
+  {
+    "id": "parodiya",
+    "name": "Пародия"
+  },
+  {
+    "id": "psychological",
+    "name": "Психологическое"
+  },
+  {
+    "id": "rabota",
+    "name": "Работа"
+  },
+  {
+    "id": "reinkarnatsiya",
+    "name": "Реинкарнация"
+  },
+  {
+    "id": "romance",
+    "name": "Романтика"
+  },
+  {
+    "id": "samurai",
+    "name": "Самураи"
+  },
+  {
+    "id": "school",
+    "name": "Школа"
+  },
+  {
+    "id": "sci-fi",
+    "name": "Фантастика"
+  },
+  {
+    "id": "seinen",
+    "name": "Сэйнэн"
+  },
+  {
+    "id": "shoujo",
+    "name": "Сёдзё"
+  },
+  {
+    "id": "shounen",
+    "name": "Сёнен"
+  },
+  {
+    "id": "slice-of-life",
+    "name": "Повседневность"
+  },
+  {
+    "id": "sports",
+    "name": "Спорт"
+  },
+  {
+    "id": "super-sila",
+    "name": "Супер сила"
+  },
+  {
+    "id": "supernatural",
+    "name": "Сверхъестественное"
+  },
+  {
+    "id": "syurrealizm",
+    "name": "Сюрреализм"
+  },
+  {
+    "id": "tayna",
+    "name": "Тайна"
+  },
+  {
+    "id": "thriller",
+    "name": "Триллер"
+  },
+  {
+    "id": "vampiry",
+    "name": "Вампиры"
+  },
+  {
+    "id": "videoigry",
+    "name": "Видеоигры"
+  }
+]

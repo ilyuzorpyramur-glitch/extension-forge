@@ -1,0 +1,14 @@
+id: shiza
+kind: aniyomi
+name: "Shiza Project"
+base_url: https://shiza-project.com
+lang: ru
+api_style: dle
+nsfw: false
+api:
+  html:
+    catalog: "/"
+    latest: "/"
+    link_re: "/releases/[^\"']+"
+    title_sel: "h1"
+  player_mode: iframe

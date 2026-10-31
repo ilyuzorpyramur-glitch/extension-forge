@@ -1,0 +1,21 @@
+# TechVision Média — aniplay.tv (разведка https://aniplay.tv)
+id: aniplay
+kind: aniyomi
+name: "TechVision Média"
+base_url: https://aniplay.tv
+lang: ru
+api_style: json_api_v2
+nsfw: false
+rating: safe
+
+api:
+  base: ""
+  list:
+    path: ""
+    items: ""
+    page_param: page
+    size_param: "per_page"
+    size: 20
+    query_param: "q"
+
+# TODO, не найдено автоматически: список тайтлов (попробуйте указать api.base и api.list.path вручную)

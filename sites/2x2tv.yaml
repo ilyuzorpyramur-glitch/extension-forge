@@ -1,0 +1,40 @@
+# Телеканал 2x2 — 2x2tv.ru (разведка https://2x2tv.ru)
+id: 2x2tv
+kind: aniyomi
+name: "Телеканал 2x2"
+base_url: https://2x2tv.ru
+lang: ru
+api_style: html
+nsfw: false
+rating: mixed
+
+html:
+  rate: 3
+  list:
+    path: "/"            # TODO: страница каталога/популярного, если не "/"
+    latest_path: "/"      # TODO: страница последних обновлений
+    search_path: ""       # TODO: например "/search?q={query}"
+    items: "a[href*=\"/video/\"]"
+    link: "a[href*=\"/video/\"]"
+    cover: "img"
+    has_next: ""          # TODO: селектор кнопки "далее", если список постраничный
+  details:
+    title: { selector: "h1" }   # TODO: проверить на странице тайтла
+    cover: ".cover img, .poster img"
+    description: { selector: ".description" }
+    genres: { selector: ".genres" }
+  chapters:
+    items: ".chapter-list a"   # TODO: селектор строки главы
+    link: "a"
+  pages:
+    images: ".reader img"      # TODO: селектор картинок читалки
+
+# найдено карточек: 13
+#   - 'Сможет ли ИИ превзойти человека? Создаём новую серию «Футурамы»' -> https://2x2tv.ru/video/16-na-9/1-sezon/smozhet-li-ii-prevzoyti-cheloveka-sozdayem-novuyu-seriyu-futuramy/
+#   - '16 на 9' -> https://2x2tv.ru/video/16-na-9/
+#   - '1 сезон' -> https://2x2tv.ru/video/16-na-9/1-sezon/
+
+# TODO: это каркас, не готовое расширение. smartparse нашёл только карточки
+# списка (см. образцы выше) — селекторы деталей/глав/страниц надо
+# проверить на реальной странице тайтла и поправить руками, затем:
+#   python3 forge.py generate sites/2x2tv.yaml

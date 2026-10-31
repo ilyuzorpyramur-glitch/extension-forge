@@ -1,0 +1,20 @@
+id: amedia
+kind: aniyomi
+name: "Amedia"
+base_url: https://amedia.club
+lang: ru
+api_style: dle
+nsfw: false
+api:
+  html:
+    catalog: "/"
+    latest: "/"
+    search: "/search/?q={query}"
+    page_suffix: "page/{page}/"
+    page_marker: "page/"
+    link_re: "/\\d+[^\"']+\\.html"
+    title_sel: "h1"
+    poster_sel: "img"
+    desc_sel: "div"
+    genre_sel: "a[href*='/genre/']"
+  relay: "/engine/ajax/controller.php?mod=player&id={id}&slot={slot}"
