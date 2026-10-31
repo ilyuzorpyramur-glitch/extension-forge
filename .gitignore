@@ -10,3 +10,7 @@ replay/
 *.keystore
 *.jks
 *.p12
+_sa.py
+_sb.py
+_st2.py
+_*.py
