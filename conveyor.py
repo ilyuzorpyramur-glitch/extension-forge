@@ -280,14 +280,23 @@ def _adb(args: list[str]) -> None:
     buildwatch.sh(["adb", "-s", device] + args)
 
 
-def _device_proxy(proxy: str) -> None:
+def _device_proxy(proxy: str) -> bool:
     """Прокси устройству через adb reverse: host 127.0.0.1 → устройство.
 
     Так не нужно открывать порт наружу и не остаётся мусора в настройках.
+    adb reverse иногда молча не встаёт (подвисший adb, занятый порт), а http_proxy
+    при этом уже включён — и устройство остаётся без сети. Поэтому сначала
+    проверяем список реверсов и только потом переключаем трафик.
     """
     port = proxy.split(":")[-1]
+    device = os.environ.get("STAND_DEVICE", "172.17.0.2:5555")
     _adb(["reverse", f"tcp:{port}", f"tcp:{port}"])
+    listed = buildwatch.sh(["adb", "-s", device, "reverse", "--list"]) or ""
+    if f"tcp:{port}" not in listed:
+        print(f"  ⚠ adb reverse tcp:{port} не встал — прокси не включаю", flush=True)
+        return False
     _adb(["shell", "settings", "put", "global", "http_proxy", proxy])
+    return True
 
 
 def _device_proxy_off() -> None:
@@ -326,12 +335,14 @@ def _stand_locked(kind: str, site_id: str, title_url: str = "") -> dict:
     code, out = run(cmd, timeout=900, env=env)
     if proxy and known_blocked:
         print(f"  → {site_id}: сайт помечен как заблокированный, сразу через прокси")
-        _device_proxy(proxy)
-        env["STAND_PROXY"] = proxy
-        try:
-            run(cmd, timeout=900, env=env)
-        finally:
-            _device_proxy_off()
+        if _device_proxy(proxy):
+            env["STAND_PROXY"] = proxy
+            try:
+                run(cmd, timeout=900, env=env)
+            finally:
+                _device_proxy_off()
+        else:
+            print(f"  ⚠ {site_id}: прокси не поднялся, проверяю напрямую", flush=True)
 
     try:
         rows = json.loads(Path(out_path).read_text(encoding="utf-8"))
@@ -343,7 +354,9 @@ def _stand_locked(kind: str, site_id: str, title_url: str = "") -> dict:
     # попытка идёт через локальный прокси, и прокси обязательно снимается.
     if row.get("passed", 0) == 0 and proxy and not os.environ.get("STAND_PROXY"):
         print(f"  ↻ {site_id}: повтор через прокси {proxy}")
-        _device_proxy(proxy)
+        if not _device_proxy(proxy):
+            print(f"  ⚠ {site_id}: прокси не поднялся, оставляю прямой результат", flush=True)
+            return row
         try:
             env["STAND_PROXY"] = proxy
             code, out = run(cmd, timeout=900, env=env)

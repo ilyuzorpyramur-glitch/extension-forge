@@ -1214,6 +1214,8 @@ function stepSearch(next) {
                 var total = 0;
                 try { total = list.size(); } catch (e) { total = -1; }
                 var sample = [];
+                var audio = [];
+                var mixed = [];
                 var media = 0;
                 for (var j = 0; j < total && j < 3; j++) {
                     var q = "", u = "";
@@ -1226,6 +1228,23 @@ function stepSearch(next) {
                     // не проиграет, поэтому такие «видео» не считаем успехом.
                     if (/\.(mp4|m3u8|webm)(\?|$)/i.test(u)) media++;
                     sample.push(q + "|" + u.substring(0, 45));
+                    // Название качества должно быть качеством: «720p», а не «AniDUB 720p».
+                    if (/^.+[^\d\s]\s+\d{3,4}p$/i.test(q.trim())) mixed.push(q.trim());
+                    try {
+                        var tracks = v.getAudioTracks();
+                        if (tracks !== null && tracks !== undefined && tracks.size() > 0) {
+                            var langs = [];
+                            for (var t = 0; t < tracks.size() && t < 5; t++) {
+                                langs.push(String(tracks.get(t).getLang()));
+                            }
+                            audio.push(langs.join(", "));
+                        }
+                    } catch (eAudio) { }
+                }
+                if (mixed.length > 0) {
+                    add("audio", false, { mixed: mixed.slice(0, 4), tracks: audio.slice(0, 4) });
+                } else {
+                    add("audio", true, { tracks: audio.slice(0, 4) });
                 }
                 if (total > 0 && media === 0) {
                     add("video", false, { count: total, media: 0, sample: sample,
