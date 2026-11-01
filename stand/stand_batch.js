@@ -797,6 +797,9 @@ function auditNext() {
             // Тот же клиент, что и у источника: у части CDN нужен Referer/UA.
             var builder = Java.use("okhttp3.Request$Builder")["$new"]();
             builder.url(url);
+            // Приложение грузит обложки с заголовками источника; часть CDN
+            // отдаёт картинку только с Referer — без них проверка врала бы.
+            try { builder.headers(src.getHeaders()); } catch (eH) { }
             var response = src.getClient().newCall(builder.build()).execute();
             var code = response.code();
             var type = String(response.header("Content-Type"));
