@@ -1215,9 +1215,9 @@ function stepSearch(next) {
                 try { total = list.size(); } catch (e) { total = -1; }
                 var sample = [];
                 var audio = [];
-                var mixed = [];
+                var pairs = [];
                 var media = 0;
-                for (var j = 0; j < total && j < 3; j++) {
+                for (var j = 0; j < total && j < 8; j++) {
                     var q = "", u = "";
                     try {
                         var v = Java.cast(list.get(j), model("eu.kanade.tachiyomi.animesource.model.Video"));
@@ -1228,8 +1228,9 @@ function stepSearch(next) {
                     // не проиграет, поэтому такие «видео» не считаем успехом.
                     if (/\.(mp4|m3u8|webm)(\?|$)/i.test(u)) media++;
                     sample.push(q + "|" + u.substring(0, 45));
-                    // Название качества должно быть качеством: «720p», а не «AniDUB 720p».
-                    if (/^.+[^\d\s]\s+\d{3,4}p$/i.test(q.trim())) mixed.push(q.trim());
+                    // Название может включать озвучку («AniDUB · 720p»), если поток
+                    // у каждой озвучки свой. Дефект — одна и та же ссылка под разными именами.
+                    pairs.push({ title: q.trim(), url: u });
                     try {
                         var tracks = v.getAudioTracks();
                         if (tracks !== null && tracks !== undefined && tracks.size() > 0) {
@@ -1241,10 +1242,18 @@ function stepSearch(next) {
                         }
                     } catch (eAudio) { }
                 }
-                if (mixed.length > 0) {
-                    add("audio", false, { mixed: mixed.slice(0, 4), tracks: audio.slice(0, 4) });
+                var seenUrl = {};
+                var sameStream = 0;
+                for (var k = 0; k < pairs.length; k++) {
+                    var key = pairs[k].url;
+                    if (!key) continue;
+                    seenUrl[key] = (seenUrl[key] || 0) + 1;
+                    if (seenUrl[key] === 2) sameStream++;
+                }
+                if (sameStream > 0) {
+                    add("audio", false, { sameStream: sameStream, titles: sample.slice(0, 4) });
                 } else {
-                    add("audio", true, { tracks: audio.slice(0, 4) });
+                    add("audio", true, { titles: sample.slice(0, 4), tracks: audio.slice(0, 4) });
                 }
                 if (total > 0 && media === 0) {
                     add("video", false, { count: total, media: 0, sample: sample,
