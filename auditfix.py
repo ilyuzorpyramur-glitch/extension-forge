@@ -134,9 +134,17 @@ def brief(plan: dict) -> str:
     return "\n".join(lines)
 
 
+def modules_in_db() -> list[str]:
+    """Все расширения, по которым в боте уже есть ответы."""
+    import sqlite3
+
+    db = sqlite3.connect(DB)
+    return [r[0].split(".")[-1] for r in db.execute("SELECT DISTINCT ext FROM answers")]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--module", default="")
+    parser.add_argument("--module", default="", help="модуль или список через запятую")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
@@ -151,7 +159,8 @@ def main() -> int:
     plans = []
     for pkg, answers in data.items():
         module = module_of(pkg)
-        if args.module and module != args.module:
+        wanted = [m.strip() for m in args.module.split(",") if m.strip()]
+        if wanted and module not in wanted:
             continue
         plans.append(plan_for(module, answers, steps))
 
