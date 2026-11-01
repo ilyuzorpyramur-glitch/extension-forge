@@ -917,6 +917,19 @@ function stepEpisodes(next) {
 
 // ---------- Новые проверки: то, что владелец видит в приложении ----------
 
+function hasNextOf(pageObj) {
+    if (pageObj === null || pageObj === undefined) return false;
+    try {
+        var m = pageObj.getClass().getMethod("getHasNextPage");
+        return m.invoke(pageObj) === true;
+    } catch (e1) { }
+    try {
+        var f = pageObj.getClass().getField("hasNextPage");
+        return f.getBoolean(pageObj) === true;
+    } catch (e2) { }
+    return false;
+}
+
 function animesOf(page) {
     var list = pageAnimes(page);
     var out = [];
@@ -973,20 +986,32 @@ function thumbOf(anime) {
 // Обрыв списка: приложение должно листать дальше.
 function stepPages(next) {
     var counts = [];
-    var page = 1;  // ЭКСПЕРИМЕНТ: та же страница, что прошла в каталоге
+    var page = 1;
+    var finish = function (reason) {
+        var empty = counts.filter(function (c) { return c === 0; }).length;
+        var info = { pages: counts };
+        if (reason) info.note = reason;
+        if (st.pageRepeat && !reason) info.note = "вторая страница похожа на первую";
+        if (empty > 0) add("scroll", false, { pages: counts, note: "страница пустая" });
+        else add("scroll", true, info);
+        next();
+    };
     var probe = function () {
         if (page > 3) {
-            var empty = counts.filter(function (c) { return c === 0; }).length;
-            var info = { pages: counts };
-            if (st.pageRepeat) info.note = "вторая страница похожа на первую";
-            if (empty > 0) add("scroll", false, { pages: counts, note: "страница пустая" });
-            else add("scroll", true, info);
-            next();
+            finish("");
             return;
         }
         callAny(src, "getPopularAnime", [page], 20000, function (p) {
             var items = animesOf(p);
             counts.push(items.length);
+            // Источник сам говорит, есть ли следующая страница: требовать третью
+            // страницу у короткого каталога — значит валить рабочее расширение.
+            var more = true;
+            try { more = String(hasNextOf(p)) === "true"; } catch (eM) { more = true; }
+            if (!more) {
+                finish(page === 1 ? "одна страница, дальше источник не отдаёт" : "");
+                return;
+            }
             // Та же выдача, что и на первой странице, — пагинация не работает.
             if (page === 2 && st.list && st.list.length > 0 && items.length > 0) {
                 var firstUrl = urlOf(st.list[0]);
