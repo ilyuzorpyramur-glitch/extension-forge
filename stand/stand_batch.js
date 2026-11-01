@@ -486,6 +486,38 @@ function invoke(obj, name, args) {
 
 // На Android 14 DexClassLoader с null вместо optimizedDirectory может искать
 // sidecar-файл и молча не грузить APK. Кэш приложения — рабочий вариант.
+// Проверка «это правда видео»: CDN отдают плейлисты без .m3u8 в адресе
+// (okcdn: /expires/<ts>/...), поэтому смотрим первые байты ответа.
+function mediaKind(url, referer) {
+    var conn = null;
+    try {
+        var URL = Java.use("java.net.URL");
+        conn = URL.$new(url).openConnection();
+        conn.setConnectTimeout(9000);
+        conn.setReadTimeout(9000);
+        conn.setInstanceFollowRedirects(true);
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126");
+        if (referer) conn.setRequestProperty("Referer", referer);
+        var code = conn.getResponseCode();
+        if (code >= 400) return "http" + code;
+        var ct = String(conn.getContentType() || "");
+        var stream = conn.getInputStream();
+        var buf = Java.array("byte", 256);
+        var n = stream.read(buf);
+        var head = "";
+        for (var i = 0; i < n && i < 120; i++) head += String.fromCharCode(buf[i] & 0xff);
+        stream.close();
+        if (head.indexOf("#EXTM3U") === 0) return "hls";
+        if (head.indexOf("ftyp") > 0 || head.indexOf("moov") > 0) return "mp4";
+        if (/mpegurl|video\/|octet-stream/i.test(ct)) return "hls";
+        return ct || "bin";
+    } catch (e) {
+        return "err";
+    } finally {
+        try { if (conn !== null) conn.disconnect(); } catch (eD) { }
+    }
+}
+
 function dexLoader(apk) {
     var out = null;
     try {
@@ -1226,7 +1258,7 @@ function stepSearch(next) {
                     } catch (e) { q = "?"; u = String(e); }
                     // Ссылка на страницу плеера — это не видео: приложение её
                     // не проиграет, поэтому такие «видео» не считаем успехом.
-                    if (/\.(mp4|m3u8|webm)(\?|$)/i.test(u)) media++;
+                    if (/\.(mp4|m3u8|webm)(\?|$)/i.test(u) || /^hls$|^mp4$/.test(mediaKind(u, ""))) media++;
                     sample.push(q + "|" + u.substring(0, 45));
                     // Название может включать озвучку («AniDUB · 720p»), если поток
                     // у каждой озвучки свой. Дефект — одна и та же ссылка под разными именами.
