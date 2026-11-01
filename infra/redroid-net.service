@@ -1,0 +1,12 @@
+[Unit]
+Description=Network fixups for redroid container
+After=docker.service sing-box-split.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/redroid-net.sh
+
+[Install]
+WantedBy=multi-user.target
